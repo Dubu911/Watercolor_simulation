@@ -1,7 +1,7 @@
 [gd_scene load_steps=7 format=3 uid="uid://cih110vr0tygx"]
 
 [ext_resource type="Script" uid="uid://uje8n7xnp3wk" path="res://trial1/canvas_2.gd" id="1_825sb"]
-[ext_resource type="Script" uid="uid://bcahhbfv7r1ew" path="res://trial1/BrushLayer.gd" id="2_1xqgj"]
+[ext_resource type="Script" uid="uid://bcahhbfv7r1ew" path="res://trial1/WatercolorLayer.gd" id="2_1xqgj"]
 [ext_resource type="Script" uid="uid://bre5ryqd147gb" path="res://trial1/camera_controller.gd" id="3_hkwir"]
 [ext_resource type="Texture2D" uid="uid://5uubi1ruirsp" path="res://icons/pallet2.png" id="4_110vs"]
 [ext_resource type="Texture2D" uid="uid://b2bt82kim5kv1" path="res://icons/pencil4.png" id="5_110vs"]

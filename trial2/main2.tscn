@@ -1,0 +1,78 @@
+[gd_scene load_steps=10 format=3 uid="uid://bvulyvbq68fhy"]
+
+[ext_resource type="Script" uid="uid://hhlftdii0krf" path="res://trial2/main2.gd" id="1_f8tpi"]
+[ext_resource type="Script" uid="uid://cfvy0mjy01kgw" path="res://trial2/painting_coordinator.gd" id="2_7htoj"]
+[ext_resource type="Script" uid="uid://dy6j7vdb3t85r" path="res://trial2/watercolor_brush.gd" id="3_7htoj"]
+[ext_resource type="Script" uid="uid://c60mf4eacnvpo" path="res://trial2/camera_2d.gd" id="3_l3qk5"]
+[ext_resource type="Script" uid="uid://bpd2sfx15n1ds" path="res://trial2/pencil_brush.gd" id="4_qu3fb"]
+[ext_resource type="Texture2D" uid="uid://5uubi1ruirsp" path="res://icons/pallet2.png" id="4_r4omg"]
+[ext_resource type="Texture2D" uid="uid://b2bt82kim5kv1" path="res://icons/pencil4.png" id="5_7htoj"]
+[ext_resource type="Script" uid="uid://iet8gtrao8wt" path="res://trial2/eraser_brush.gd" id="5_tldsc"]
+[ext_resource type="Texture2D" uid="uid://6eyrjn38jt4o" path="res://icons/eraser4.png" id="6_qu3fb"]
+
+[node name="main2" type="Node2D"]
+script = ExtResource("1_f8tpi")
+
+[node name="painting_coordinator" type="Node2D" parent="."]
+script = ExtResource("2_7htoj")
+watercolor_layer_node_path = NodePath("../watercolor_layer")
+pencil_layer_node_path = NodePath("../pencil_layer")
+watercolor_brush_node_path = NodePath("watercolor_brush")
+pencil_brush_node_path = NodePath("pencil_brush")
+eraser_brush_node_path = NodePath("eraser_brush")
+
+[node name="watercolor_brush" type="Node2D" parent="painting_coordinator"]
+script = ExtResource("3_7htoj")
+
+[node name="pencil_brush" type="Node2D" parent="painting_coordinator"]
+script = ExtResource("4_qu3fb")
+
+[node name="eraser_brush" type="Node2D" parent="painting_coordinator"]
+script = ExtResource("5_tldsc")
+
+[node name="watercolor_layer" type="Sprite2D" parent="."]
+centered = false
+
+[node name="pencil_layer" type="Sprite2D" parent="."]
+z_index = 1
+centered = false
+
+[node name="Camera2D" type="Camera2D" parent="."]
+offset = Vector2(1000, 1000)
+script = ExtResource("3_l3qk5")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -88.0
+offset_top = -235.0
+offset_right = 944.0
+offset_bottom = 3893.0
+grow_horizontal = 0
+grow_vertical = 0
+scale = Vector2(0.07, 0.07)
+theme_override_constants/separation = 20
+
+[node name="WatercolorButton" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+icon = ExtResource("4_r4omg")
+
+[node name="PencilButton" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+icon = ExtResource("5_7htoj")
+
+[node name="EraserButton" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+icon = ExtResource("6_qu3fb")
+
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/WatercolorButton" to="painting_coordinator" method="_on_watercolor_button_pressed"]
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/PencilButton" to="painting_coordinator" method="_on_pencil_button_pressed"]
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/EraserButton" to="painting_coordinator" method="_on_eraser_button_pressed"]
