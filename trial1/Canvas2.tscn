@@ -1,0 +1,66 @@
+[gd_scene load_steps=7 format=3 uid="uid://cih110vr0tygx"]
+
+[ext_resource type="Script" uid="uid://uje8n7xnp3wk" path="res://trial1/canvas_2.gd" id="1_825sb"]
+[ext_resource type="Script" uid="uid://bcahhbfv7r1ew" path="res://trial1/BrushLayer.gd" id="2_1xqgj"]
+[ext_resource type="Script" uid="uid://bre5ryqd147gb" path="res://trial1/camera_controller.gd" id="3_hkwir"]
+[ext_resource type="Texture2D" uid="uid://5uubi1ruirsp" path="res://icons/pallet2.png" id="4_110vs"]
+[ext_resource type="Texture2D" uid="uid://b2bt82kim5kv1" path="res://icons/pencil4.png" id="5_110vs"]
+[ext_resource type="Texture2D" uid="uid://6eyrjn38jt4o" path="res://icons/eraser4.png" id="6_uw67h"]
+
+[node name="Canvas2" type="Node2D"]
+script = ExtResource("1_825sb")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+custom_minimum_size = Vector2(2000, 2000)
+offset_right = 2000.0
+offset_bottom = 2000.0
+
+[node name="WatercolorLayer" type="Sprite2D" parent="."]
+z_index = 1
+centered = false
+script = ExtResource("2_1xqgj")
+pencil_layer_node_path = NodePath("../PencilLayer")
+
+[node name="PencilLayer" type="Sprite2D" parent="."]
+z_index = 2
+centered = false
+
+[node name="Camera2D" type="Camera2D" parent="."]
+offset = Vector2(1000, 1000)
+script = ExtResource("3_hkwir")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -88.0
+offset_top = -235.0
+offset_right = 944.0
+offset_bottom = 3893.0
+grow_horizontal = 0
+grow_vertical = 0
+scale = Vector2(0.07, 0.07)
+theme_override_constants/separation = 20
+
+[node name="WatercolorButton" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+icon = ExtResource("4_110vs")
+
+[node name="PencilButton" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+icon = ExtResource("5_110vs")
+
+[node name="EraserButton" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+icon = ExtResource("6_uw67h")
+
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/WatercolorButton" to="WatercolorLayer" method="_on_watercolor_button_pressed"]
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/PencilButton" to="WatercolorLayer" method="_on_pencil_button_pressed"]
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/EraserButton" to="WatercolorLayer" method="_on_eraser_button_pressed"]

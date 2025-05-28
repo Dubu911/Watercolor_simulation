@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cgw688oy0ky"]
+
+[ext_resource type="Script" uid="uid://bnl4kkfrhfiqv" path="res://trial1/watercolor_particle.gd" id="1_1uja5"]
+
+[node name="WaterColorParticle" type="Node2D"]
+script = ExtResource("1_1uja5")

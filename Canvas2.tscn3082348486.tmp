@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://cih110vr0tygx"]
+
+[ext_resource type="Script" uid="uid://uje8n7xnp3wk" path="res://canvas_2.gd" id="1_825sb"]
+[ext_resource type="Script" uid="uid://bcahhbfv7r1ew" path="res://BrushLayer.gd" id="2_1xqgj"]
+
+[node name="Canvas2" type="Node2D"]
+script = ExtResource("1_825sb")
+
+[node name="ColorRect" type="ColorRect" parent="."]
+custom_minimum_size = Vector2(2000, 2000)
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+script = ExtResource("2_1xqgj")
