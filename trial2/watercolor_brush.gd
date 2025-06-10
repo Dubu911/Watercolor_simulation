@@ -2,7 +2,7 @@
 extends Node2D
 
 # --- Particle System Properties (Export these to adjust in Inspector) ---
-@export var particle_scene_path: String = "res://trial1/watercolor_particle.tscn" # Adjust if your path is different
+@export var particle_scene_path: String = "res://particle/watercolor_particle.tscn"
 @export var brush_color: Color = Color(0.1, 0.2, 0.8, 0.3) # Default watercolor color with alpha
 @export var base_brush_size: float = 15.0      # Base size for particles spawned
 @export var particle_lifespan: float = 1.0 # How long particles from this brush live
@@ -29,15 +29,18 @@ func _ready():
 	particles_node.name = "ActiveParticlesContainer"
 	add_child(particles_node)
 
+func set_active_color(new_color: Color):
+	self.brush_color = new_color
+	# You could add other logic here if needed when color changes, e.g.:
+	# print(name + " color changed to: " + str(new_color))
+	# update_brush_preview_icon()
 
 func activate(coordinator):
 	coordinator_ref = coordinator
 	is_painting = false # Reset painting state when activated
-	# print(name + " activated.") # Debug print removed
 
 func deactivate():
 	is_painting = false # Ensure painting stops if brush is deactivated mid-stroke
-	# print(name + " deactivated.") # Debug print removed
 
 
 func handle_input(event: InputEvent, mouse_pos_img_space: Vector2, target_image: Image, coordinator):

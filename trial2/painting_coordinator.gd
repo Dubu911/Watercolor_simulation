@@ -32,21 +32,26 @@ var watercolor_brush_node: Node # Should ideally be typed to a base Brush class
 var pencil_brush_node: Node
 var eraser_brush_node: Node
 var active_brush_node: Node = null
+var last_selected_color: Color = Color(0.1, 0.2, 0.8, 0.3) # Stores the last color from the color picker
+
 
 
 func _ready():
 	# 1. Get Layer Sprite2D Nodes
 	if watercolor_layer_node_path.is_empty():
-		# Consider a more user-friendly error or disabling functionality
+		print("Watercolor layer node path is empty")
 		return
 	watercolor_layer_sprite = get_node_or_null(watercolor_layer_node_path) as Sprite2D
 	if not watercolor_layer_sprite:
+		print("Watercolor layer sprite is Null")
 		return
 
 	if pencil_layer_node_path.is_empty():
+		print("Pencil layer node path is empty")
 		return
 	pencil_layer_sprite = get_node_or_null(pencil_layer_node_path) as Sprite2D
 	if not pencil_layer_sprite:
+		print("Pencil layer sprite is Null")
 		return
 
 	# 2. Initialize Images & Textures
@@ -79,7 +84,7 @@ func _ready():
 		_set_active_brush(watercolor_brush_node)
 
 
-func _input(event: InputEvent):
+func _unhandled_input(event: InputEvent):
 	if not active_brush_node:
 		return
 
@@ -120,6 +125,10 @@ func mark_pencil_dirty():
 	_dirty_pencil_image = true
 
 func _set_active_brush(new_brush_node: Node):
+	if not is_instance_valid(new_brush_node):
+		printerr("PaintingCoordinator: Attempted to set an invalid new_brush_node.")
+		return
+		
 	if active_brush_node == new_brush_node:
 		return
 
@@ -128,9 +137,25 @@ func _set_active_brush(new_brush_node: Node):
 
 	active_brush_node = new_brush_node
 
-	if active_brush_node and active_brush_node.has_method("activate"):
-		active_brush_node.activate(self)
+	# Activate new brush and set its color if applicable
+	if is_instance_valid(active_brush_node):
+		if active_brush_node.has_method("activate"):
+			active_brush_node.activate(self) # Pass self as coordinator reference
+		
+		# If the new brush is not the eraser and can have its color set, apply the last selected color
+		if active_brush_node != eraser_brush_node and active_brush_node.has_method("set_active_color"):
+			active_brush_node.set_active_color(last_selected_color)
 
+# Called when the ColorPickerButton's color changes
+func _update_brush_color_from_picker(new_color: Color):
+	last_selected_color = new_color # Store the latest color picked
+	print("PaintingCoordinator: Color picker changed to: ", last_selected_color)
+
+	# If there's an active brush, it's not the eraser, and it can accept a color, update it
+	if is_instance_valid(active_brush_node) and \
+		active_brush_node != eraser_brush_node and \
+		active_brush_node.has_method("set_active_color"):
+		active_brush_node.set_active_color(last_selected_color)
 
 func _on_watercolor_button_pressed():
 	print("watercolor brush selected")
@@ -146,3 +171,6 @@ func _on_eraser_button_pressed():
 	print("Eraser brush selected")
 	if eraser_brush_node:
 		_set_active_brush(eraser_brush_node)
+
+func _on_color_picker_button_color_changed(new_color: Color):
+	_update_brush_color_from_picker(new_color)

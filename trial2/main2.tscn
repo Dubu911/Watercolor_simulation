@@ -5,10 +5,10 @@
 [ext_resource type="Script" uid="uid://dy6j7vdb3t85r" path="res://trial2/watercolor_brush.gd" id="3_7htoj"]
 [ext_resource type="Script" uid="uid://c60mf4eacnvpo" path="res://trial2/camera_2d.gd" id="3_l3qk5"]
 [ext_resource type="Script" uid="uid://bpd2sfx15n1ds" path="res://trial2/pencil_brush.gd" id="4_qu3fb"]
-[ext_resource type="Texture2D" uid="uid://5uubi1ruirsp" path="res://icons/pallet2.png" id="4_r4omg"]
-[ext_resource type="Texture2D" uid="uid://b2bt82kim5kv1" path="res://icons/pencil4.png" id="5_7htoj"]
 [ext_resource type="Script" uid="uid://iet8gtrao8wt" path="res://trial2/eraser_brush.gd" id="5_tldsc"]
-[ext_resource type="Texture2D" uid="uid://6eyrjn38jt4o" path="res://icons/eraser4.png" id="6_qu3fb"]
+[ext_resource type="Texture2D" uid="uid://b37d655y1kk84" path="res://icons/pallet.png" id="7_qu3fb"]
+[ext_resource type="Texture2D" uid="uid://dtir1mkd8gl80" path="res://icons/pencil.png" id="8_tldsc"]
+[ext_resource type="Texture2D" uid="uid://j58fqdqtg4cu" path="res://icons/eraser.png" id="9_tldsc"]
 
 [node name="main2" type="Node2D"]
 script = ExtResource("1_f8tpi")
@@ -49,30 +49,44 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -88.0
-offset_top = -235.0
-offset_right = 944.0
-offset_bottom = 3893.0
+offset_left = -93.0
+offset_top = -263.0
+offset_right = -13.0
+offset_bottom = -21.0
 grow_horizontal = 0
 grow_vertical = 0
-scale = Vector2(0.07, 0.07)
-theme_override_constants/separation = 20
+mouse_filter = 0
+theme_override_constants/separation = 1
 
 [node name="WatercolorButton" type="Button" parent="CanvasLayer/VBoxContainer"]
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
-icon = ExtResource("4_r4omg")
+size_flags_horizontal = 0
+icon = ExtResource("7_qu3fb")
 
 [node name="PencilButton" type="Button" parent="CanvasLayer/VBoxContainer"]
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
-icon = ExtResource("5_7htoj")
+size_flags_horizontal = 0
+icon = ExtResource("8_tldsc")
 
 [node name="EraserButton" type="Button" parent="CanvasLayer/VBoxContainer"]
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
-icon = ExtResource("6_qu3fb")
+size_flags_horizontal = 0
+icon = ExtResource("9_tldsc")
+
+[node name="ColorPickerButton" type="ColorPickerButton" parent="CanvasLayer"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -85.0
+offset_top = 21.0
+offset_right = -13.0
+offset_bottom = 89.0
+grow_horizontal = 0
 
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/WatercolorButton" to="painting_coordinator" method="_on_watercolor_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/PencilButton" to="painting_coordinator" method="_on_pencil_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/EraserButton" to="painting_coordinator" method="_on_eraser_button_pressed"]
+[connection signal="color_changed" from="CanvasLayer/ColorPickerButton" to="painting_coordinator" method="_on_color_picker_button_color_changed"]

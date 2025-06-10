@@ -1,0 +1,99 @@
+[gd_scene load_steps=12 format=3 uid="uid://dej7ftjjcsqhr"]
+
+[ext_resource type="Script" uid="uid://b20s4eqjlfjto" path="res://trial3/main_3.gd" id="1_bp1uf"]
+[ext_resource type="Script" uid="uid://cd5op84l2j7eq" path="res://trial3/brush_manager.gd" id="2_2yaok"]
+[ext_resource type="Script" uid="uid://b8r4ttw2vfo28" path="res://trial3/pencil_brush.gd" id="2_h1ynh"]
+[ext_resource type="Script" uid="uid://crjm0c6w7fi57" path="res://trial3/watercolor_brush.gd" id="2_shnf3"]
+[ext_resource type="Script" uid="uid://cta1jjghexxa8" path="res://trial3/camera_2d.gd" id="2_sl8jp"]
+[ext_resource type="Script" uid="uid://cduo36t1smadi" path="res://trial3/eraser_brush.gd" id="3_1yvx1"]
+[ext_resource type="Texture2D" uid="uid://b37d655y1kk84" path="res://icons/pallet.png" id="3_h1ynh"]
+[ext_resource type="Texture2D" uid="uid://dtir1mkd8gl80" path="res://icons/pencil.png" id="4_1yvx1"]
+[ext_resource type="Script" uid="uid://bs0q83sbiekfp" path="res://trial3/painting_coordinator.gd" id="5_kn0cr"]
+[ext_resource type="Texture2D" uid="uid://j58fqdqtg4cu" path="res://icons/eraser.png" id="5_shnf3"]
+[ext_resource type="Script" uid="uid://b6vytgsswq7vp" path="res://trial3/physics_simulator.gd" id="7_a7fc4"]
+
+[node name="main3" type="Node2D"]
+script = ExtResource("1_bp1uf")
+
+[node name="layers_container" type="Node2D" parent="."]
+
+[node name="static_layer" type="Sprite2D" parent="layers_container"]
+
+[node name="mobile_layer" type="Sprite2D" parent="layers_container"]
+
+[node name="water_layer" type="Sprite2D" parent="layers_container"]
+visible = false
+
+[node name="pencil_layer" type="Sprite2D" parent="layers_container"]
+
+[node name="brush_manager" type="Node" parent="."]
+script = ExtResource("2_2yaok")
+painting_coordinator_path = NodePath("../painting_coordinator")
+watercolor_brush_path = NodePath("watercolor_brush")
+pencil_brush_path = NodePath("pencil_brush")
+eraser_brush_path = NodePath("eraser_brush")
+layer_for_mouse_pos_path = NodePath("../layers_container/mobile_layer")
+
+[node name="watercolor_brush" type="Node" parent="brush_manager"]
+script = ExtResource("2_shnf3")
+brush_color = Color(0.547642, 0.584073, 0.865523, 0.5)
+
+[node name="pencil_brush" type="Node" parent="brush_manager"]
+script = ExtResource("2_h1ynh")
+
+[node name="eraser_brush" type="Node" parent="brush_manager"]
+script = ExtResource("3_1yvx1")
+
+[node name="painting_coordinator" type="Node" parent="."]
+script = ExtResource("5_kn0cr")
+water_layer_sprite_path = NodePath("../layers_container/water_layer")
+mobile_layer_sprite_path = NodePath("../layers_container/mobile_layer")
+static_layer_sprite_path = NodePath("../layers_container/static_layer")
+pencil_layer_sprite_path = NodePath("../layers_container/pencil_layer")
+brush_manager_path = NodePath("../brush_manager")
+
+[node name="physics_simulator" type="Node" parent="painting_coordinator"]
+script = ExtResource("7_a7fc4")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+offset = Vector2(1000, 1000)
+script = ExtResource("2_sl8jp")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CanvasLayer"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -93.0
+offset_top = -263.0
+offset_right = -13.0
+offset_bottom = -21.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 0
+theme_override_constants/separation = 1
+
+[node name="watercolor_button" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 0
+icon = ExtResource("3_h1ynh")
+
+[node name="pencil_button" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 0
+icon = ExtResource("4_1yvx1")
+
+[node name="eraser_button" type="Button" parent="CanvasLayer/VBoxContainer"]
+custom_minimum_size = Vector2(50, 50)
+layout_mode = 2
+size_flags_horizontal = 0
+icon = ExtResource("5_shnf3")
+
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/watercolor_button" to="brush_manager" method="_on_watercolor_button_pressed"]
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/pencil_button" to="brush_manager" method="_on_pencil_button_pressed"]
+[connection signal="pressed" from="CanvasLayer/VBoxContainer/eraser_button" to="brush_manager" method="_on_eraser_button_pressed"]

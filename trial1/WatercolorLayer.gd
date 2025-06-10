@@ -22,7 +22,7 @@ var watercolor_texture : ImageTexture
 var dirty_watercolor_image: bool = false
 
 # --- Particle System Properties (for Watercolor) ---
-const WatercolorParticleScene = preload("res://trial1/watercolor_particle.tscn") # Path to the particle scene
+const WatercolorParticleScene = preload("res://particle/watercolor_particle.tscn") # Path to the particle scene
 var particles_node: Node # A node to hold all active particles for organization
 var watercolor_brush_color: Color = Color(0.1, 0.2, 0.8, 0.3) # Current watercolor brush color
 var watercolor_brush_size: float = 15.0      # Base size for watercolor particles
