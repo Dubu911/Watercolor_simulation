@@ -2,8 +2,8 @@
 extends Node
 
 # --- Canvas Properties ---
-const CANVAS_WIDTH := 2000
-const CANVAS_HEIGHT := 2000
+const CANVAS_WIDTH := 64
+const CANVAS_HEIGHT := 64
 
 @onready var physics_simulator = $physics_simulator
 
@@ -21,10 +21,13 @@ var static_layer_sprite: Sprite2D
 var pencil_layer_sprite: Sprite2D
 
 # --- Image Data (The actual data for the simulation) ---
-var water_image: Image
+var water_read_buffer: Image
+var water_write_buffer: Image
 var mobile_image: Image
 var static_image: Image
 var pencil_image: Image
+var absorbency_map : Image
+var displacement_map : Image
 
 # --- Textures (The GPU version of the data for display) ---
 var water_texture: ImageTexture
@@ -37,6 +40,15 @@ var _dirty_watercolor: bool = false
 var _dirty_pencil: bool = false
 var active_brush_node: Node = null
 
+# --- Simulation Parameters ---
+const GRAVITY_STRENGTH = 9.8 # Base gravity constant
+
+var horizontal_theta: float = 0.0 # Angle in degrees
+var vertical_theta: float = 0.0   # Angle in degrees
+
+# --- Pre-calculated Gravity Components ---
+var gravity_x: float = 0.0
+var gravity_y: float = 0.0
 
 func _ready():
 	# 1. Get Layer Sprite2D Nodes with more robust checks
@@ -62,9 +74,11 @@ func _ready():
 
 	# 2. Initialize Images & Textures
 	# Water layer uses a floating-point format for precision
-	water_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
-	water_texture = ImageTexture.create_from_image(water_image)
+	water_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
+	water_texture = ImageTexture.create_from_image(water_read_buffer)
 	water_layer_sprite.texture = water_texture
+	
+	water_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	
 	# Mobile layer is for wet pigment, starts transparent
 	mobile_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
@@ -84,23 +98,49 @@ func _ready():
 	pencil_texture = ImageTexture.create_from_image(pencil_image)
 	pencil_layer_sprite.texture = pencil_texture
 	
+	# Physics layers
+	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
+	displacement_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGF)
+	
 	# All layers are centered = false to draw from top-left (0,0)
 	water_layer_sprite.centered = false
 	mobile_layer_sprite.centered = false
 	static_layer_sprite.centered = false
 	pencil_layer_sprite.centered = false
 
+	# --- DEBUG PURPOSE APPLYING CUSTOM SHADER FOR WATER LAYER ---
+	var shader = load("res://trial3/water_debug_shader.gdshader")
+	var shader_material = ShaderMaterial.new()
+	shader_material.shader = shader
+	water_layer_sprite.material = shader_material
+	
 	# Start dirty for initial update
 	mark_watercolor_dirty()
 	mark_pencil_dirty()
+	_update_gravity_components()
 	
+	# Getting local variables ready in physics_simulator.gd
+	if physics_simulator:
+		physics_simulator.init(	CANVAS_WIDTH,
+								CANVAS_HEIGHT,
+								water_read_buffer,
+								water_write_buffer,
+								mobile_image,
+								static_image,
+								absorbency_map,
+								displacement_map)
+								
 # The main simulation loop
 func _process(_delta: float):
 	# --- Physics Simulations will go here in the future ---
-	
+	physics_simulator.run_simulation_step(_delta, gravity_x, gravity_y)
+	water_read_buffer = physics_simulator.water_read
+	mark_watercolor_dirty()
 	# --- Texture Updates ---
 	if _dirty_watercolor:
-		if water_texture and water_image: water_texture.update(water_image)
+		#--- for water fluid check. needs to be disabled for faster performance ---
+		if water_texture and water_read_buffer: water_texture.update(water_read_buffer)
+		
 		if mobile_texture and mobile_image: mobile_texture.update(mobile_image)
 		if static_texture and static_image: static_texture.update(static_image)
 		_dirty_watercolor = false
@@ -126,9 +166,9 @@ func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 				if draw_x >= 0 and draw_x < CANVAS_WIDTH and draw_y >= 0 and draw_y < CANVAS_HEIGHT:
 					
 					# --- Add water to the water layer ---
-					var current_water = water_image.get_pixel(draw_x, draw_y).r
+					var current_water = water_read_buffer.get_pixel(draw_x, draw_y).r
 					var new_water = min(1.0, current_water + water) # Cap water at 1.0
-					water_image.set_pixel(draw_x, draw_y, Color(new_water, 0, 0))
+					water_read_buffer.set_pixel(draw_x, draw_y, Color(new_water, 0, 0))
 					
 					# --- Add color to the mobile pigment layer ---
 					# This is a simple blend for now. More complex logic can be added later.
@@ -169,6 +209,19 @@ func _draw_dot(img: Image, center_pos: Vector2, color: Color, radius: float):
 					# For pencil/eraser, we just overwrite the pixel
 					img.set_pixel(draw_x, draw_y, color)
 
+func _update_gravity_components():
+	var h_rad = deg_to_rad(horizontal_theta)
+	var v_rad = deg_to_rad(vertical_theta)
+	gravity_x = GRAVITY_STRENGTH * sin(h_rad)
+	gravity_y = GRAVITY_STRENGTH * sin(v_rad)
+	
+func set_vertical_tilt(degrees: float):
+	vertical_theta = degrees
+	_update_gravity_components()
+	
+func set_horizontal_tilt(degrees: float):
+	horizontal_theta = degrees
+	_update_gravity_components()
 
 func mark_watercolor_dirty():
 	_dirty_watercolor = true

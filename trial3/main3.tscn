@@ -20,9 +20,9 @@ script = ExtResource("1_bp1uf")
 [node name="static_layer" type="Sprite2D" parent="layers_container"]
 
 [node name="mobile_layer" type="Sprite2D" parent="layers_container"]
+visible = false
 
 [node name="water_layer" type="Sprite2D" parent="layers_container"]
-visible = false
 
 [node name="pencil_layer" type="Sprite2D" parent="layers_container"]
 
@@ -56,7 +56,8 @@ brush_manager_path = NodePath("../brush_manager")
 script = ExtResource("7_a7fc4")
 
 [node name="Camera2D" type="Camera2D" parent="."]
-offset = Vector2(1000, 1000)
+offset = Vector2(32, 32)
+zoom = Vector2(9, 9)
 script = ExtResource("2_sl8jp")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]

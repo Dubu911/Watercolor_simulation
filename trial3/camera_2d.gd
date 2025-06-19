@@ -6,7 +6,7 @@ var is_panning: bool = false
 @export var zoom_factor: float = 1.1 # How much to zoom in/out per scroll step
 									 # Values > 1. Greater means faster zoom.
 @export var min_zoom: float = 0.2    # Smallest zoom value (most zoomed in)
-@export var max_zoom: float = 5.0    # Largest zoom value (most zoomed out)
+@export var max_zoom: float = 10.0    # Largest zoom value (most zoomed out)
 # ---------------------------------
 
 func _input(event: InputEvent) -> void:
@@ -38,4 +38,3 @@ func _input(event: InputEvent) -> void:
 			new_zoom.y = clampf(new_zoom.y, min_zoom, max_zoom)
 			
 			zoom = new_zoom # Apply the new (potentially clamped) zoom
-	# --- End Mouse Wheel Zoom Logic ---
