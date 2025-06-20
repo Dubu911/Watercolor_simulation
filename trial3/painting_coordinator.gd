@@ -4,6 +4,7 @@ extends Node
 # --- Canvas Properties ---
 const CANVAS_WIDTH := 64
 const CANVAS_HEIGHT := 64
+const MAX_WATER_AMOUNT := 1.0
 
 @onready var physics_simulator = $physics_simulator
 
@@ -167,7 +168,7 @@ func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 					
 					# --- Add water to the water layer ---
 					var current_water = water_read_buffer.get_pixel(draw_x, draw_y).r
-					var new_water = min(1.0, current_water + water) # Cap water at 1.0
+					var new_water = min(MAX_WATER_AMOUNT, current_water + water)
 					water_read_buffer.set_pixel(draw_x, draw_y, Color(new_water, 0, 0))
 					
 					# --- Add color to the mobile pigment layer ---
@@ -208,6 +209,36 @@ func _draw_dot(img: Image, center_pos: Vector2, color: Color, radius: float):
 				if draw_x >= 0 and draw_x < CANVAS_WIDTH and draw_y >= 0 and draw_y < CANVAS_HEIGHT:
 					# For pencil/eraser, we just overwrite the pixel
 					img.set_pixel(draw_x, draw_y, color)
+
+func _unhandled_input(event: InputEvent):
+	var angle_change_speed = 1.0 # How fast the angle changes when a key is held
+	var needs_update = false
+
+	# Check for arrow key presses
+	if Input.is_key_pressed(KEY_UP):
+		vertical_theta -= angle_change_speed
+		needs_update = true
+	if Input.is_key_pressed(KEY_DOWN):
+		vertical_theta += angle_change_speed
+		needs_update = true
+	if Input.is_key_pressed(KEY_LEFT):
+		horizontal_theta -= angle_change_speed
+		needs_update = true
+	if Input.is_key_pressed(KEY_RIGHT):
+		horizontal_theta += angle_change_speed
+		needs_update = true
+
+	# If any key was pressed, clamp the values and update gravity
+	if needs_update:
+		# Keep the angles within a -90 to 90 degree range
+		vertical_theta = clamp(vertical_theta, -90.0, 90.0)
+		horizontal_theta = clamp(horizontal_theta, -90.0, 90.0)
+		
+		# Recalculate the gravity components with the new angles
+		_update_gravity_components()
+		
+		# Print the new angles to the output log for debugging
+		print("Vertical Tilt: ", vertical_theta, " | Horizontal Tilt: ", horizontal_theta)
 
 func _update_gravity_components():
 	var h_rad = deg_to_rad(horizontal_theta)

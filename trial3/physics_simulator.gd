@@ -4,10 +4,10 @@ extends Node
 # --- SIMULATION CONSTANTS ---
 const DIFFUSION_RATE = 0.1
 const EVAPORATION_RATE = 0.005
-const S = 13 # Surface tension coefficient
-const SP = 10 # Spread force coefficient
-const HOLD_THRESHOLD = 0.7 # The force needed to wet a dry pixel
-const DRY_PIXEL_LIMIT = 0.1 # Any water amount below this is considered "dry"
+const S = 0.3 # Surface tension coefficient
+const SP = 2.0 # Spread force coefficient
+const HOLD_THRESHOLD = 0.5 # The force needed to wet a dry pixel
+const DRY_PIXEL_LIMIT = 0.001 # Any water amount below this is considered "dry"
 
 # --- MEMBER VARIABLES TO HOLD REFERENCES TO DATA LAYERS ---
 var canvas_width := 0
@@ -67,7 +67,9 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			# Left side
 			for i in range(1,11):
 				if x-i >= 0 :
-					left_sum += water_read.get_pixel(x-i,y).r
+					var amount = water_read.get_pixel(x-i,y).r
+					if amount < DRY_PIXEL_LIMIT : break
+					left_sum += amount
 					count += 1
 			if count > 0: left_sum /= count
 			
@@ -75,7 +77,9 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			count = 0
 			for i in range(1,11):
 				if x+i < canvas_width:
-					right_sum += water_read.get_pixel(x+i,y).r
+					var amount = water_read.get_pixel(x+i,y).r
+					if amount < DRY_PIXEL_LIMIT : break
+					right_sum += amount
 					count += 1
 			if count > 0 : right_sum /= count
 			
@@ -104,7 +108,9 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			# Up side
 			for i in range(1,11):
 				if y-i >= 0 :
-					up_sum += water_read.get_pixel(x,y-i).r
+					var amount = water_read.get_pixel(x,y-i).r
+					if amount < DRY_PIXEL_LIMIT : break
+					up_sum += amount
 					count += 1
 			if count > 0: up_sum /= count
 			
@@ -112,7 +118,9 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			count = 0
 			for i in range(1,11):
 				if y+i < canvas_height:
-					down_sum += water_read.get_pixel(x,y+i).r
+					var amount = water_read.get_pixel(x,y+i).r
+					if amount < DRY_PIXEL_LIMIT : break
+					down_sum += amount
 					count += 1
 			if count > 0 : down_sum /= count
 			
@@ -123,7 +131,9 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			var down_neighbor = 0.0
 			if y-1 >= 0 :up_neighbor = water_read.get_pixel(x,y-1).r
 			if y+1 < canvas_height : down_neighbor = water_read.get_pixel(x,y+1).r
-			
+
+			#var difference = abs(left_neighbor-right_neighbor)
+			#if difference < 0.01 : difference = 0.0
 			var spread_force_y = SP * (up_neighbor - down_neighbor)
 			
 			# 4. Overall Force in x direction
