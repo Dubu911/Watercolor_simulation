@@ -4,10 +4,11 @@ extends Node
 # --- SIMULATION CONSTANTS ---
 const DIFFUSION_RATE = 0.1
 const EVAPORATION_RATE = 0.005
-const S = 0.3 # Surface tension coefficient
-const SP = 2.0 # Spread force coefficient
-const HOLD_THRESHOLD = 0.5 # The force needed to wet a dry pixel
-const DRY_PIXEL_LIMIT = 0.001 # Any water amount below this is considered "dry"
+#const S = 0.5 # Surface tension coefficient
+#const SP = 1.3 # Spread force coefficient
+const HOLD_THRESHOLD = 0.7 # The force needed to wet a dry pixel
+const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
+const IGNORE_THRESHOLD = 0.003
 
 # --- MEMBER VARIABLES TO HOLD REFERENCES TO DATA LAYERS ---
 var canvas_width := 0
@@ -19,6 +20,39 @@ var mobile_pigment: Image
 var static_pigment: Image
 var absorbency_map: Image
 var displacement_map: Image
+
+# Debugging purpose
+@export var S: float = 0.5 # Surface tension coefficient
+@export var SP: float = 1.3 # Spread force coefficient
+# A flag to prevent spamming the print statement
+var values_changed_this_frame := false
+# --- FUNCTION FOR LIVE TUNING ---
+func _process(delta: float):
+	var change_speed = 0.1 * delta # How fast the values change
+	values_changed_this_frame = false
+	# --- Controls for Surface Tension (S) ---
+	if Input.is_key_pressed(KEY_Q):
+		S += change_speed
+		values_changed_this_frame = true
+	if Input.is_key_pressed(KEY_A):
+		S -= change_speed
+		values_changed_this_frame = true
+	# --- Controls for Spreading Force (SP) ---
+	if Input.is_key_pressed(KEY_W):
+		SP += change_speed
+		values_changed_this_frame = true
+	if Input.is_key_pressed(KEY_S):
+		SP -= change_speed
+		values_changed_this_frame = true
+		
+	# Ensure values don't go below zero
+	S = max(0.0, S)
+	SP = max(0.0, SP)
+
+	# Print the new values to the console only if they changed
+	if values_changed_this_frame:
+		print("Surface Tension (S): %.2f | Spreading Force (SP): %.2f" % [S, SP])
+
 
 func init(p_width: int, p_height: int, p_water_read: Image, p_water_write: Image, 
 		  p_mobile_pigment: Image, p_static_pigment: Image, p_absorbency: Image, p_displacement: Image):
@@ -37,7 +71,8 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	#_simulate_evaporation(delta, water_img)
 	#_simulate_diffusion(delta, water_img, mobile_img) # pigments in mobile_image diffusses
 	_calculate_water_displacement(g_x, g_y)
-	_apply_water_displacement(delta) # surface water movements happen with pigments in mobile_image
+	#_apply_water_displacement(delta) # surface water movements happen with pigments in mobile_image
+	_apply_water_displacement_outflow_model(delta)
 	# _simulate_deposition(delta, water_img, mobile_img, static_img) # mobile_image -> static_image
 	
 	# Swap the buffers so the new state becomes the current state for the next frame.
@@ -68,7 +103,7 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			for i in range(1,11):
 				if x-i >= 0 :
 					var amount = water_read.get_pixel(x-i,y).r
-					if amount < DRY_PIXEL_LIMIT : break
+					if amount <= 0 : break
 					left_sum += amount
 					count += 1
 			if count > 0: left_sum /= count
@@ -78,7 +113,7 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			for i in range(1,11):
 				if x+i < canvas_width:
 					var amount = water_read.get_pixel(x+i,y).r
-					if amount < DRY_PIXEL_LIMIT : break
+					if amount <= 0 : break
 					right_sum += amount
 					count += 1
 			if count > 0 : right_sum /= count
@@ -142,12 +177,13 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			# Store x,y directional force
 			displacement_map.set_pixel(x, y, Color(Dx, Dy, 0))
 			
-# Move the water based on the calculated forces.
+# Move the water based on the calculated forces.(Inflow model)
 func _apply_water_displacement(delta: float):
 	# First, copy the current state to the write buffer.
 	# We will then move water between pixels *within* this write buffer.
 	water_write.blit_rect(water_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
-
+	#water_write.fill(Color(0,0,0,0))
+	
 	# Now, iterate and apply transfers between pixels.
 	for y in range(canvas_height):
 		for x in range(canvas_width):
@@ -160,10 +196,12 @@ func _apply_water_displacement(delta: float):
 			# --- Horizontal Transfer ---
 			if D.r > 0 and x < canvas_width - 1: # Wants to move RIGHT
 				var amount_to_move = D.r * water_at_source * delta
-				var neighbor_water = water_read.get_pixel(x + 1, y).r
+				var neighbor_water = water_write.get_pixel(x + 1, y).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
+				#if neighbor_water > DRY_PIXEL_LIMIT:
 					# Can't move more than we have
-					var actual_move_amount = min(amount_to_move, water_at_source) 
+					var actual_move_amount = min(amount_to_move, water_at_source)
+					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0 
 					# Get current values from the WRITE buffer
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x + 1, y).r
@@ -172,9 +210,11 @@ func _apply_water_displacement(delta: float):
 					water_write.set_pixel(x + 1, y, Color(dest_val + actual_move_amount, 0, 0))
 			elif D.r < 0 and x > 0: # Wants to move LEFT
 				var amount_to_move = abs(D.r * water_at_source * delta)
-				var neighbor_water = water_read.get_pixel(x - 1, y).r
+				var neighbor_water = water_write.get_pixel(x - 1, y).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
+					#if neighbor_water > DRY_PIXEL_LIMIT:
 					var actual_move_amount = min(amount_to_move, water_at_source)
+					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x - 1, y).r
 					water_write.set_pixel(x, y, Color(source_val - actual_move_amount, 0, 0))
@@ -187,22 +227,87 @@ func _apply_water_displacement(delta: float):
 			
 			if D.g > 0 and y < canvas_height - 1: # Wants to move DOWN
 				var amount_to_move = D.g * water_at_source * delta
-				var neighbor_water = water_read.get_pixel(x, y + 1).r
+				var neighbor_water = water_write.get_pixel(x, y + 1).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
+					#if neighbor_water > DRY_PIXEL_LIMIT:
 					var actual_move_amount = min(amount_to_move, water_at_source)
+					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x, y + 1).r
 					water_write.set_pixel(x, y, Color(source_val - actual_move_amount, 0, 0))
 					water_write.set_pixel(x, y + 1, Color(dest_val + actual_move_amount, 0, 0))
 			elif D.g < 0 and y > 0: # Wants to move UP
 				var amount_to_move = abs(D.g * water_at_source * delta)
-				var neighbor_water = water_read.get_pixel(x, y - 1).r
+				var neighbor_water = water_write.get_pixel(x, y - 1).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
+					#if neighbor_water > DRY_PIXEL_LIMIT:
 					var actual_move_amount = min(amount_to_move, water_at_source)
+					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x, y - 1).r
 					water_write.set_pixel(x, y, Color(source_val - actual_move_amount, 0, 0))
 					water_write.set_pixel(x, y - 1, Color(dest_val + actual_move_amount, 0, 0))
+	
+# Outflow model
+func _apply_water_displacement_outflow_model(delta: float):
+	 #Getting write buffer ready for work
+	water_write.fill(Color(0,0,0,0))
+
+	for y in range(canvas_height):
+		for x in range(canvas_width):
+
+			var total_here = water_read.get_pixel(x,y).r
+			#var capacity = absorbency_map.get_pixel(x,y).r  # 0.0 if unused
+			var capacity = 0.0
+			var movable_water = max(0.0, total_here - capacity)
+			if movable_water < DRY_PIXEL_LIMIT:
+				#water_write.set_pixel(x,y, Color(total_here,0,0))
+				continue
+
+			# force field from previous stage
+			var F = displacement_map.get_pixel(x,y)
+			var want_r = max(0.0, F.r) * movable_water * delta
+			var want_l = max(0.0,-F.r) * movable_water * delta
+			var want_d = max(0.0, F.g) * movable_water * delta
+			var want_u = max(0.0,-F.g) * movable_water * delta
+
+			# tiny-parcel gate (soft!)
+			if x < canvas_width - 1 and water_read.get_pixel(x+1,y).r < DRY_PIXEL_LIMIT and want_r < HOLD_THRESHOLD: want_r = 0.0
+			if x > 0 and water_read.get_pixel(x-1,y).r < DRY_PIXEL_LIMIT and want_l < HOLD_THRESHOLD: want_l = 0.0
+			if y < canvas_height - 1 and water_read.get_pixel(x,y+1).r < DRY_PIXEL_LIMIT and want_d < HOLD_THRESHOLD: want_d = 0.0
+			if y > 0 and water_read.get_pixel(x,y-1).r < DRY_PIXEL_LIMIT and want_u < HOLD_THRESHOLD: want_u = 0.0
+
+			# Scale down outflows if they exceed the available movable water
+			var total_outflow = want_r + want_l + want_d + want_u
+			if total_outflow > movable_water:
+				var scaling_factor = movable_water / total_outflow
+				want_r *= scaling_factor
+				want_l *= scaling_factor
+				want_d *= scaling_factor
+				want_u *= scaling_factor
+				total_outflow = movable_water # The total is now exactly the movable amount
+
+			# --- Commit the transfers using the ACCUMULATOR pattern ---
+			
+			# 1. Add the water that STAYS to the write buffer at the source pixel
+			var water_staying = total_here - total_outflow
+			var source_val = water_write.get_pixel(x, y).r
+			water_write.set_pixel(x, y, Color(source_val + water_staying, 0, 0))
+			
+			# 2. Add the outflow amounts to the neighbors in the write buffer
+			if want_r > 0.0:
+				var neighbor_val = water_write.get_pixel(x + 1, y).r
+				water_write.set_pixel(x + 1, y, Color(neighbor_val + want_r, 0, 0))
+			if want_l > 0.0:
+				var neighbor_val = water_write.get_pixel(x - 1, y).r
+				water_write.set_pixel(x - 1, y, Color(neighbor_val + want_l, 0, 0))
+			if want_d > 0.0:
+				var neighbor_val = water_write.get_pixel(x, y + 1).r
+				water_write.set_pixel(x, y + 1, Color(neighbor_val + want_d, 0, 0))
+			if want_u > 0.0:
+				var neighbor_val = water_write.get_pixel(x, y - 1).r
+				water_write.set_pixel(x, y - 1, Color(neighbor_val + want_u, 0, 0))
+
 
 # This function will handle the spreading of water and mobile pigment.
 func _simulate_diffusion(delta: float, water: Image, mobile_pigment: Image):

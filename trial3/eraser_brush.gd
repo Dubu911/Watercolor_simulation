@@ -1,7 +1,7 @@
 # eraser_brush.gd
 extends Node
 
-@export var brush_radius: float = 10.0
+@export var brush_radius: float = 3.0
 
 var coordinator_ref
 var is_painting: bool = false

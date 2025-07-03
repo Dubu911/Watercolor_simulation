@@ -1,7 +1,7 @@
 # pencil_brush.gd
 extends Node
 
-@export var brush_radius: float = 3.0
+@export var brush_radius: float = 1.0
 @export var brush_color: Color = Color.BLACK
 
 var coordinator_ref
