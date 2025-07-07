@@ -7,7 +7,7 @@ extends Node
 @export var pencil_brush_path: NodePath
 @export var eraser_brush_path: NodePath
 @export var layer_for_mouse_pos_path: NodePath
-
+@export var current_color_display_path: NodePath
 
 # --- Internal References to PathNode ---
 var painting_coordinator: Node
@@ -16,7 +16,10 @@ var pencil_brush: Node
 var eraser_brush: Node
 var layer_for_mouse_pos: Sprite2D
 
-var last_selected_color: Color = Color(0.1, 0.2, 0.8, 0.5)
+# --- Current Brush State ---
+var selected_pigments: Array[Color] = []
+var current_pigment_color: Color = Color.BLACK 
+var current_water_amount: float = 0.05 # Default value
 
 func _ready():
 	# Get the actual nodes from the NodePaths. Add robust checks.
@@ -45,6 +48,8 @@ func _ready():
 	# Set the initial brush when the game starts
 	if watercolor_brush:
 		_set_active_brush(watercolor_brush)
+	
+	get_node(current_color_display_path).color = current_pigment_color
 
 func _unhandled_input(event: InputEvent):
 	# Get the currently active brush from the coordinator
@@ -70,26 +75,58 @@ func _unhandled_input(event: InputEvent):
 func _set_active_brush(new_brush: Node):
 	if not is_instance_valid(painting_coordinator): return
 
-	# Deactivate the current brush if it exists
 	var current_active_brush = painting_coordinator.get("active_brush_node")
 	if is_instance_valid(current_active_brush) and current_active_brush.has_method("deactivate"):
 		current_active_brush.deactivate()
 
-	# Tell the coordinator to set its new active brush
-	# We call a function on the coordinator instead of changing its variable directly.
 	if painting_coordinator.has_method("set_active_brush"):
 		painting_coordinator.set_active_brush(new_brush)
 	else:
-		printerr("BrushManager ERROR: PaintingCoordinator is missing the 'set_active_brush' method!")
+		printerr("BrushManager ERROR: Coordinator missing 'set_active_brush' method!")
 
-	# Activate the new brush
 	if is_instance_valid(new_brush) and new_brush.has_method("activate"):
 		new_brush.activate(painting_coordinator)
 		
-	# If the new brush is colorable, update its color to the last selected color
-	if new_brush != eraser_brush and new_brush.has_method("set_active_color"):
-		new_brush.set_active_color(last_selected_color)
+	_update_active_brush_properties()
+	
+func _update_active_brush_properties():
+	var active_brush = painting_coordinator.get("active_brush_node")
+	if not is_instance_valid(active_brush): return
+	# Update color for any brush that isn't the eraser
+	if active_brush != eraser_brush and active_brush.has_method("set_active_color"):
+		active_brush.set_active_color(current_pigment_color)
+	# Update water amount only for the watercolor brush
+	if active_brush == watercolor_brush and active_brush.has_method("set_water_amount"):
+		active_brush.set_water_amount(current_water_amount)
 
+# This function adds or removes a color from our list
+func _toggle_pigment(is_on: bool, color: Color):
+	if is_on:
+		if not selected_pigments.has(color):
+			selected_pigments.append(color)
+	else:
+		if selected_pigments.has(color):
+			selected_pigments.erase(color)
+
+	_mix_and_update_brush()
+
+# This function calculates the final mixed color
+func _mix_and_update_brush():
+	if selected_pigments.is_empty():
+		# If no colors are selected, maybe default to black or a neutral gray
+		current_pigment_color = Color.BLACK
+	else:
+		# Simple averaging/blending of all selected colors
+		var mixed_color = selected_pigments[0]
+		for i in range(1, selected_pigments.size()):
+			mixed_color = mixed_color.blend(selected_pigments[i])
+		current_pigment_color = mixed_color
+
+	# Now that we have the final color, update the brush
+	_update_active_brush_properties()
+
+	# Update the color of the "current color" display square
+	get_node(current_color_display_path).color = current_pigment_color
 
 # --- UI Signal Receivers ---
 # Connect the 'pressed' signal from your UI Buttons to these functions.
@@ -109,12 +146,20 @@ func _on_eraser_button_pressed():
 		print("brush_manager: Eraser Brush selected")
 		_set_active_brush(eraser_brush)
 
-# to do : custom color palette UI to this function in the future.
-func _on_color_selected(new_color: Color):
-	last_selected_color = new_color
-	
-	var current_active_brush = painting_coordinator.get("active_brush_node")
-	# Update the color of the active brush, if it's not the eraser
-	if is_instance_valid(current_active_brush) and current_active_brush != eraser_brush:
-		if current_active_brush.has_method("set_active_color"):
-			current_active_brush.set_active_color(last_selected_color)
+func _on_magenta_button_toggled(is_on: bool):
+	var magenta_color = Color(0.9, 0.1, 0.4, 0.5)
+	_toggle_pigment(is_on, magenta_color)
+
+func _on_cyan_button_toggled(is_on: bool):
+	var cyan_color = Color(0.0, 0.6, 0.9, 0.5)
+	_toggle_pigment(is_on, cyan_color)
+
+func _on_yellow_button_toggled(is_on: bool):
+	var yellow_color = Color(1.0, 0.9, 0.2, 0.5)
+	_toggle_pigment(is_on, yellow_color)
+
+func _on_water_slider_value_changed(value: float):
+	# The slider's value is from 0 to 1
+	current_water_amount = value
+	print("Current water amount : ", value)
+	_update_active_brush_properties()

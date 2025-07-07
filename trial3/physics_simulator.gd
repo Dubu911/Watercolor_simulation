@@ -6,9 +6,12 @@ const DIFFUSION_RATE = 0.1
 const EVAPORATION_RATE = 0.005
 #const S = 0.5 # Surface tension coefficient
 #const SP = 1.3 # Spread force coefficient
-const HOLD_THRESHOLD = 0.7 # The force needed to wet a dry pixel
-const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
-const IGNORE_THRESHOLD = 0.003
+@export var S: float = 0.5 # Surface tension coefficient
+@export var SP: float = 1.35 # Spread force coefficient
+@export var HOLD_THRESHOLD = 1.3 # The force needed to wet a dry pixel
+const DRY_PIXEL_LIMIT = 0.0 # Any water amount below this is considered "dry"
+const ENERGY_LOSS_ON_REDISTRIBUTION = 0.5 # How much energy is lost when flow is redirected
+
 
 # --- MEMBER VARIABLES TO HOLD REFERENCES TO DATA LAYERS ---
 var canvas_width := 0
@@ -16,14 +19,13 @@ var canvas_height := 0
 
 var water_read: Image
 var water_write: Image
-var mobile_pigment: Image
+var mobile_read: Image
+var mobile_write: Image
 var static_pigment: Image
 var absorbency_map: Image
 var displacement_map: Image
 
-# Debugging purpose
-@export var S: float = 0.5 # Surface tension coefficient
-@export var SP: float = 1.3 # Spread force coefficient
+# Fine tunning purpose
 # A flag to prevent spamming the print statement
 var values_changed_this_frame := false
 # --- FUNCTION FOR LIVE TUNING ---
@@ -54,14 +56,15 @@ func _process(delta: float):
 		print("Surface Tension (S): %.2f | Spreading Force (SP): %.2f" % [S, SP])
 
 
-func init(p_width: int, p_height: int, p_water_read: Image, p_water_write: Image, 
-		  p_mobile_pigment: Image, p_static_pigment: Image, p_absorbency: Image, p_displacement: Image):
+func init(p_width: int, p_height: int, p_water_read: Image, p_water_write: Image, p_mobile_read: Image, 
+		  p_mobile_write: Image, p_static_pigment: Image, p_absorbency: Image, p_displacement: Image):
 	canvas_width = p_width
 	canvas_height = p_height
 	
 	water_read = p_water_read
 	water_write = p_water_write
-	mobile_pigment = p_mobile_pigment
+	mobile_read = p_mobile_read
+	mobile_write = p_mobile_write
 	static_pigment = p_static_pigment
 	absorbency_map = p_absorbency
 	displacement_map = p_displacement
@@ -198,10 +201,8 @@ func _apply_water_displacement(delta: float):
 				var amount_to_move = D.r * water_at_source * delta
 				var neighbor_water = water_write.get_pixel(x + 1, y).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
-				#if neighbor_water > DRY_PIXEL_LIMIT:
 					# Can't move more than we have
 					var actual_move_amount = min(amount_to_move, water_at_source)
-					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0 
 					# Get current values from the WRITE buffer
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x + 1, y).r
@@ -212,9 +213,7 @@ func _apply_water_displacement(delta: float):
 				var amount_to_move = abs(D.r * water_at_source * delta)
 				var neighbor_water = water_write.get_pixel(x - 1, y).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
-					#if neighbor_water > DRY_PIXEL_LIMIT:
 					var actual_move_amount = min(amount_to_move, water_at_source)
-					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x - 1, y).r
 					water_write.set_pixel(x, y, Color(source_val - actual_move_amount, 0, 0))
@@ -229,9 +228,7 @@ func _apply_water_displacement(delta: float):
 				var amount_to_move = D.g * water_at_source * delta
 				var neighbor_water = water_write.get_pixel(x, y + 1).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
-					#if neighbor_water > DRY_PIXEL_LIMIT:
 					var actual_move_amount = min(amount_to_move, water_at_source)
-					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x, y + 1).r
 					water_write.set_pixel(x, y, Color(source_val - actual_move_amount, 0, 0))
@@ -240,9 +237,7 @@ func _apply_water_displacement(delta: float):
 				var amount_to_move = abs(D.g * water_at_source * delta)
 				var neighbor_water = water_write.get_pixel(x, y - 1).r
 				if not (neighbor_water < DRY_PIXEL_LIMIT and amount_to_move < HOLD_THRESHOLD):
-					#if neighbor_water > DRY_PIXEL_LIMIT:
 					var actual_move_amount = min(amount_to_move, water_at_source)
-					#if actual_move_amount < IGNORE_THRESHOLD : actual_move_amount = 0
 					var source_val = water_write.get_pixel(x, y).r
 					var dest_val = water_write.get_pixel(x, y - 1).r
 					water_write.set_pixel(x, y, Color(source_val - actual_move_amount, 0, 0))
@@ -257,10 +252,9 @@ func _apply_water_displacement_outflow_model(delta: float):
 		for x in range(canvas_width):
 
 			var total_here = water_read.get_pixel(x,y).r
-			#var capacity = absorbency_map.get_pixel(x,y).r  # 0.0 if unused
-			var capacity = 0.0
+			var capacity = absorbency_map.get_pixel(x,y).r  # 0.0 if unused
 			var movable_water = max(0.0, total_here - capacity)
-			if movable_water < DRY_PIXEL_LIMIT:
+			if movable_water <= DRY_PIXEL_LIMIT:
 				#water_write.set_pixel(x,y, Color(total_here,0,0))
 				continue
 
@@ -271,12 +265,31 @@ func _apply_water_displacement_outflow_model(delta: float):
 			var want_d = max(0.0, F.g) * movable_water * delta
 			var want_u = max(0.0,-F.g) * movable_water * delta
 
-			# tiny-parcel gate (soft!)
-			if x < canvas_width - 1 and water_read.get_pixel(x+1,y).r < DRY_PIXEL_LIMIT and want_r < HOLD_THRESHOLD: want_r = 0.0
-			if x > 0 and water_read.get_pixel(x-1,y).r < DRY_PIXEL_LIMIT and want_l < HOLD_THRESHOLD: want_l = 0.0
-			if y < canvas_height - 1 and water_read.get_pixel(x,y+1).r < DRY_PIXEL_LIMIT and want_d < HOLD_THRESHOLD: want_d = 0.0
-			if y > 0 and water_read.get_pixel(x,y-1).r < DRY_PIXEL_LIMIT and want_u < HOLD_THRESHOLD: want_u = 0.0
+			# Identify blocked paths and sum the blocked flow.
+			var total_blocked_flow = 0.0
+			
+			if x < canvas_width - 1 and water_read.get_pixel(x+1,y).r < DRY_PIXEL_LIMIT and want_r < HOLD_THRESHOLD:
+				total_blocked_flow += want_r; want_r = 0.0
+			if x > 0 and water_read.get_pixel(x-1,y).r < DRY_PIXEL_LIMIT and want_l < HOLD_THRESHOLD:
+				total_blocked_flow += want_l; want_l = 0.0
+			if y < canvas_height - 1 and water_read.get_pixel(x,y+1).r < DRY_PIXEL_LIMIT and want_d < HOLD_THRESHOLD:
+				total_blocked_flow += want_d; want_d = 0.0
+			if y > 0 and water_read.get_pixel(x,y-1).r < DRY_PIXEL_LIMIT and want_u < HOLD_THRESHOLD:
+				total_blocked_flow += want_u; want_u = 0.0
 
+			# Redistribute the blocked flow to any open paths.
+			var open_paths_count = 0
+			if want_r > 0.0: open_paths_count += 1
+			if want_l > 0.0: open_paths_count += 1
+			if want_d > 0.0: open_paths_count += 1
+			if want_u > 0.0: open_paths_count += 1
+			
+			if open_paths_count > 0 and total_blocked_flow > 0:
+				var redistributed_flow = (total_blocked_flow * ENERGY_LOSS_ON_REDISTRIBUTION) / open_paths_count
+				if want_r > 0.0: want_r += redistributed_flow
+				if want_l > 0.0: want_l += redistributed_flow
+				if want_d > 0.0: want_d += redistributed_flow
+				if want_u > 0.0: want_u += redistributed_flow
 			# Scale down outflows if they exceed the available movable water
 			var total_outflow = want_r + want_l + want_d + want_u
 			if total_outflow > movable_water:
@@ -289,12 +302,12 @@ func _apply_water_displacement_outflow_model(delta: float):
 
 			# --- Commit the transfers using the ACCUMULATOR pattern ---
 			
-			# 1. Add the water that STAYS to the write buffer at the source pixel
+			# Add the water that STAYS to the write buffer at the source pixel
 			var water_staying = total_here - total_outflow
 			var source_val = water_write.get_pixel(x, y).r
 			water_write.set_pixel(x, y, Color(source_val + water_staying, 0, 0))
 			
-			# 2. Add the outflow amounts to the neighbors in the write buffer
+			# Add the outflow amounts to the neighbors in the write buffer
 			if want_r > 0.0:
 				var neighbor_val = water_write.get_pixel(x + 1, y).r
 				water_write.set_pixel(x + 1, y, Color(neighbor_val + want_r, 0, 0))

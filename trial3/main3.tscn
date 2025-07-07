@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://dej7ftjjcsqhr"]
+[gd_scene load_steps=16 format=3 uid="uid://dej7ftjjcsqhr"]
 
 [ext_resource type="Script" uid="uid://b20s4eqjlfjto" path="res://trial3/main_3.gd" id="1_bp1uf"]
 [ext_resource type="Script" uid="uid://cd5op84l2j7eq" path="res://trial3/brush_manager.gd" id="2_2yaok"]
@@ -11,6 +11,17 @@
 [ext_resource type="Script" uid="uid://bs0q83sbiekfp" path="res://trial3/painting_coordinator.gd" id="5_kn0cr"]
 [ext_resource type="Texture2D" uid="uid://j58fqdqtg4cu" path="res://icons/eraser.png" id="5_shnf3"]
 [ext_resource type="Script" uid="uid://b6vytgsswq7vp" path="res://trial3/physics_simulator.gd" id="7_a7fc4"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_155ov"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_a7fc4"]
+bg_color = Color(1, 0, 1, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tg5ul"]
+bg_color = Color(0, 1, 1, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_x1wqm"]
+bg_color = Color(1, 1, 0, 1)
 
 [node name="main3" type="Node2D"]
 script = ExtResource("1_bp1uf")
@@ -34,6 +45,7 @@ watercolor_brush_path = NodePath("watercolor_brush")
 pencil_brush_path = NodePath("pencil_brush")
 eraser_brush_path = NodePath("eraser_brush")
 layer_for_mouse_pos_path = NodePath("../layers_container/mobile_layer")
+current_color_display_path = NodePath("../CanvasLayer/current_color_display")
 
 [node name="watercolor_brush" type="Node" parent="brush_manager"]
 script = ExtResource("2_shnf3")
@@ -96,6 +108,53 @@ layout_mode = 2
 size_flags_horizontal = 0
 icon = ExtResource("5_shnf3")
 
+[node name="color_controls" type="HBoxContainer" parent="CanvasLayer"]
+offset_left = 881.0
+offset_top = 9.0
+offset_right = 1019.0
+offset_bottom = 55.0
+
+[node name="pigment" type="Label" parent="CanvasLayer/color_controls"]
+layout_mode = 2
+
+[node name="magenta" type="Button" parent="CanvasLayer/color_controls"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+theme_override_styles/hover = SubResource("StyleBoxFlat_155ov")
+theme_override_styles/normal = SubResource("StyleBoxFlat_a7fc4")
+toggle_mode = true
+
+[node name="cyan" type="Button" parent="CanvasLayer/color_controls"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_tg5ul")
+toggle_mode = true
+
+[node name="yellow" type="Button" parent="CanvasLayer/color_controls"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_x1wqm")
+toggle_mode = true
+
+[node name="water_slider" type="VSlider" parent="CanvasLayer"]
+offset_left = 982.0
+offset_top = 238.0
+offset_right = 1009.0
+offset_bottom = 364.0
+max_value = 1.0
+step = 0.01
+value = 0.05
+
+[node name="current_color_display" type="ColorRect" parent="CanvasLayer"]
+offset_left = 931.0
+offset_top = 299.0
+offset_right = 978.0
+offset_bottom = 352.0
+
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/watercolor_button" to="brush_manager" method="_on_watercolor_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/pencil_button" to="brush_manager" method="_on_pencil_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/eraser_button" to="brush_manager" method="_on_eraser_button_pressed"]
+[connection signal="toggled" from="CanvasLayer/color_controls/magenta" to="brush_manager" method="_on_magenta_button_toggled"]
+[connection signal="toggled" from="CanvasLayer/color_controls/cyan" to="brush_manager" method="_on_cyan_button_toggled"]
+[connection signal="toggled" from="CanvasLayer/color_controls/yellow" to="brush_manager" method="_on_yellow_button_toggled"]
+[connection signal="value_changed" from="CanvasLayer/water_slider" to="brush_manager" method="_on_water_slider_value_changed"]

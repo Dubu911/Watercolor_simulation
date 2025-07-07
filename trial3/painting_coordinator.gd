@@ -24,7 +24,8 @@ var pencil_layer_sprite: Sprite2D
 # --- Image Data (The actual data for the simulation) ---
 var water_read_buffer: Image
 var water_write_buffer: Image
-var mobile_image: Image
+var mobile_read_buffer: Image
+var mobile_write_buffer : Image
 var static_image: Image
 var pencil_image: Image
 var absorbency_map : Image
@@ -82,10 +83,12 @@ func _ready():
 	water_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	
 	# Mobile layer is for wet pigment, starts transparent
-	mobile_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
-	mobile_image.fill(Color(0, 0, 0, 0)) # Start fully transparent
-	mobile_texture = ImageTexture.create_from_image(mobile_image)
+	mobile_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
+	mobile_read_buffer.fill(Color(0, 0, 0, 0)) # Start fully transparent
+	mobile_texture = ImageTexture.create_from_image(mobile_read_buffer)
 	mobile_layer_sprite.texture = mobile_texture
+	
+	mobile_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
 	
 	# Static layer is the "paper", starts white
 	static_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
@@ -102,6 +105,9 @@ func _ready():
 	# Physics layers
 	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	displacement_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGF)
+	
+	# Initialize the paper properties
+	_initialize_paper_properties()
 	
 	# All layers are centered = false to draw from top-left (0,0)
 	water_layer_sprite.centered = false
@@ -126,7 +132,8 @@ func _ready():
 								CANVAS_HEIGHT,
 								water_read_buffer,
 								water_write_buffer,
-								mobile_image,
+								mobile_read_buffer,
+								mobile_write_buffer,
 								static_image,
 								absorbency_map,
 								displacement_map)
@@ -142,7 +149,7 @@ func _process(_delta: float):
 		#--- for water fluid check. needs to be disabled for faster performance ---
 		if water_texture and water_read_buffer: water_texture.update(water_read_buffer)
 		
-		if mobile_texture and mobile_image: mobile_texture.update(mobile_image)
+		if mobile_texture and mobile_read_buffer: mobile_texture.update(mobile_read_buffer)
 		if static_texture and static_image: static_texture.update(static_image)
 		_dirty_watercolor = false
 	
@@ -173,11 +180,11 @@ func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 					
 					# --- Add color to the mobile pigment layer ---
 					# This is a simple blend for now. More complex logic can be added later.
-					var existing_mobile_color = mobile_image.get_pixel(draw_x, draw_y)
+					var existing_mobile_color = mobile_read_buffer.get_pixel(draw_x, draw_y)
 					var blended_color = existing_mobile_color.blend(color)
-					mobile_image.set_pixel(draw_x, draw_y, blended_color)
+					mobile_read_buffer.set_pixel(draw_x, draw_y, blended_color)
 	
-	# After adding paint, we MUST mark the watercolor layers as dirty for an update.
+	# Flag for refreshing
 	mark_watercolor_dirty()
 
 func draw_line_on_pencil_layer(from_pos: Vector2, to_pos: Vector2, color: Color, radius: float):
@@ -246,6 +253,19 @@ func _update_gravity_components():
 	gravity_x = GRAVITY_STRENGTH * sin(h_rad)
 	gravity_y = GRAVITY_STRENGTH * sin(v_rad)
 	
+func _initialize_paper_properties():
+	# Loop through every pixel to set its absorbency
+	for y in range(CANVAS_HEIGHT):
+		for x in range(CANVAS_WIDTH):
+			var random_absorbency = randf_range(0.01, 0.013)
+			#var random_absorbency = 0.01
+			# Set the pixel value. Since the format is FORMAT_RF,
+			# the value is stored in the red channel.
+			absorbency_map.set_pixel(x, y, Color(random_absorbency, 0, 0))
+
+	# It's also a good idea to initialize the displacement map to zero here
+	displacement_map.fill(Color(0,0,0,0))
+
 func set_vertical_tilt(degrees: float):
 	vertical_theta = degrees
 	_update_gravity_components()

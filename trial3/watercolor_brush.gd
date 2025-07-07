@@ -11,15 +11,18 @@ extends Node
 var coordinator_ref # Reference to the painting_coordinator
 var is_painting: bool = false # Tracks if the mouse button is held for painting
 
-func set_active_color(new_color: Color):
-	self.brush_color = new_color
-
 func activate(coordinator):
 	coordinator_ref = coordinator
 	is_painting = false
 
 func deactivate():
 	is_painting = false
+	
+func set_active_color(new_color: Color):
+	self.brush_color = new_color
+	
+func set_water_amount(new_amount: float):
+	self.water_amount = new_amount
 
 # This function is called by the BrushManager, which gets the input event.
 func handle_input(event: InputEvent, mouse_pos_img_space: Vector2):
