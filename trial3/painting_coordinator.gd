@@ -44,7 +44,6 @@ var active_brush_node: Node = null
 
 # --- Simulation Parameters ---
 const GRAVITY_STRENGTH = 9.8 # Base gravity constant
-
 var horizontal_theta: float = 0.0 # Angle in degrees
 var vertical_theta: float = 0.0   # Angle in degrees
 
@@ -84,7 +83,7 @@ func _ready():
 	
 	# Mobile layer is for wet pigment, starts transparent
 	mobile_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
-	mobile_read_buffer.fill(Color(0, 0, 0, 0)) # Start fully transparent
+	mobile_read_buffer.fill(Color(1, 1, 1, 0))  # Fill with transparent white
 	mobile_texture = ImageTexture.create_from_image(mobile_read_buffer)
 	mobile_layer_sprite.texture = mobile_texture
 	
@@ -131,8 +130,8 @@ func _ready():
 		physics_simulator.init(	CANVAS_WIDTH,
 								CANVAS_HEIGHT,
 								water_read_buffer,
-								water_write_buffer,
 								mobile_read_buffer,
+								water_write_buffer,
 								mobile_write_buffer,
 								static_image,
 								absorbency_map,
@@ -143,6 +142,7 @@ func _process(_delta: float):
 	# --- Physics Simulations will go here in the future ---
 	physics_simulator.run_simulation_step(_delta, gravity_x, gravity_y)
 	water_read_buffer = physics_simulator.water_read
+	mobile_read_buffer = physics_simulator.mobile_read
 	mark_watercolor_dirty()
 	# --- Texture Updates ---
 	if _dirty_watercolor:
@@ -158,34 +158,46 @@ func _process(_delta: float):
 		_dirty_pencil = false
 
 
-# This is the function your watercolor brush will now call.
-# This function applies a "dab" of paint directly to the data layers.
+# This is the function that watercolor brush will now call.
 func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 	var i_radius = int(size)
-	# Loop through a square around the dab position
 	for y_offset in range(-i_radius, i_radius + 1):
 		for x_offset in range(-i_radius, i_radius + 1):
-			# Check if the pixel is inside the circular dab
 			if Vector2(x_offset, y_offset).length_squared() <= size * size:
 				var draw_x = int(pos.x + x_offset)
 				var draw_y = int(pos.y + y_offset)
 
-				# Check if the pixel is within the canvas bounds
 				if draw_x >= 0 and draw_x < CANVAS_WIDTH and draw_y >= 0 and draw_y < CANVAS_HEIGHT:
-					
-					# --- Add water to the water layer ---
 					var current_water = water_read_buffer.get_pixel(draw_x, draw_y).r
 					var new_water = min(MAX_WATER_AMOUNT, current_water + water)
 					water_read_buffer.set_pixel(draw_x, draw_y, Color(new_water, 0, 0))
 					
 					# --- Add color to the mobile pigment layer ---
-					# This is a simple blend for now. More complex logic can be added later.
-					var existing_mobile_color = mobile_read_buffer.get_pixel(draw_x, draw_y)
-					var blended_color = existing_mobile_color.blend(color)
-					mobile_read_buffer.set_pixel(draw_x, draw_y, blended_color)
+					var src = color # The new color from the brush (Source)
+					var dst = mobile_read_buffer.get_pixel(draw_x, draw_y) # The existing color (Destination)
+					
+					# *** THE FIX IS HERE: Correct alpha compositing logic ***
+					# This formula correctly layers a semi-transparent color on top of another.
+					
+					# Calculate the final alpha value
+					var out_a = src.a + dst.a * (1.0 - src.a)
+
+					var out_r = 0.0
+					var out_g = 0.0
+					var out_b = 0.0
+
+					# Check to avoid division by zero if the final color is fully transparent
+					if out_a > 0.0001:
+						# This is the standard "source-over" formula for non-premultiplied alpha
+						out_r = (src.r * src.a + dst.r * dst.a * (1.0 - src.a)) / out_a
+						out_g = (src.g * src.a + dst.g * dst.a * (1.0 - src.a)) / out_a
+						out_b = (src.b * src.a + dst.b * dst.a * (1.0 - src.a)) / out_a
+					
+					var layered_color = Color(out_r, out_g, out_b, out_a)
+					mobile_read_buffer.set_pixel(draw_x, draw_y, layered_color)
 	
-	# Flag for refreshing
 	mark_watercolor_dirty()
+
 
 func draw_line_on_pencil_layer(from_pos: Vector2, to_pos: Vector2, color: Color, radius: float):
 	if not is_instance_valid(pencil_image): return
@@ -217,21 +229,23 @@ func _draw_dot(img: Image, center_pos: Vector2, color: Color, radius: float):
 					# For pencil/eraser, we just overwrite the pixel
 					img.set_pixel(draw_x, draw_y, color)
 
+
+# Input handling.
 func _unhandled_input(event: InputEvent):
 	var angle_change_speed = 1.0 # How fast the angle changes when a key is held
 	var needs_update = false
 
 	# Check for arrow key presses
-	if Input.is_key_pressed(KEY_UP):
+	if Input.is_key_pressed(KEY_W):
 		vertical_theta -= angle_change_speed
 		needs_update = true
-	if Input.is_key_pressed(KEY_DOWN):
+	if Input.is_key_pressed(KEY_S):
 		vertical_theta += angle_change_speed
 		needs_update = true
-	if Input.is_key_pressed(KEY_LEFT):
+	if Input.is_key_pressed(KEY_A):
 		horizontal_theta -= angle_change_speed
 		needs_update = true
-	if Input.is_key_pressed(KEY_RIGHT):
+	if Input.is_key_pressed(KEY_D):
 		horizontal_theta += angle_change_speed
 		needs_update = true
 
@@ -257,7 +271,7 @@ func _initialize_paper_properties():
 	# Loop through every pixel to set its absorbency
 	for y in range(CANVAS_HEIGHT):
 		for x in range(CANVAS_WIDTH):
-			var random_absorbency = randf_range(0.01, 0.013)
+			var random_absorbency = randf_range(0.1, 0.15)
 			#var random_absorbency = 0.01
 			# Set the pixel value. Since the format is FORMAT_RF,
 			# the value is stored in the red channel.

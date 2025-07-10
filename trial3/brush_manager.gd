@@ -15,10 +15,11 @@ var watercolor_brush: Node
 var pencil_brush: Node
 var eraser_brush: Node
 var layer_for_mouse_pos: Sprite2D
+var current_color_display: ColorRect
 
 # --- Current Brush State ---
 var selected_pigments: Array[Color] = []
-var current_pigment_color: Color = Color.BLACK 
+var current_pigment_color: Color = Color.GRAY 
 var current_water_amount: float = 0.05 # Default value
 
 func _ready():
@@ -44,12 +45,18 @@ func _ready():
 	if not layer_for_mouse_pos:
 		printerr("BrushManager ERROR: LayerForMousePos not found! Assign a Sprite2D in the Inspector.")
 		return
-		
-	# Set the initial brush when the game starts
+
+	current_color_display = get_node_or_null(current_color_display_path) as ColorRect
+	if not current_color_display: 
+		printerr("BrushManager ERROR: CurrentColorDisplay not found!")
+		return
+
+	# Set the initial brush and update its properties
 	if watercolor_brush:
 		_set_active_brush(watercolor_brush)
 	
-	get_node(current_color_display_path).color = current_pigment_color
+	# Initialize the UI on start
+	_mix_and_update_brush()
 
 func _unhandled_input(event: InputEvent):
 	# Get the currently active brush from the coordinator
@@ -99,7 +106,8 @@ func _update_active_brush_properties():
 	if active_brush == watercolor_brush and active_brush.has_method("set_water_amount"):
 		active_brush.set_water_amount(current_water_amount)
 
-# This function adds or removes a color from our list
+
+# This function adds or removes an OPAQUE pigment from our selection
 func _toggle_pigment(is_on: bool, color: Color):
 	if is_on:
 		if not selected_pigments.has(color):
@@ -107,26 +115,38 @@ func _toggle_pigment(is_on: bool, color: Color):
 	else:
 		if selected_pigments.has(color):
 			selected_pigments.erase(color)
-
+	
 	_mix_and_update_brush()
 
-# This function calculates the final mixed color
+# This function calculates the final mixed color and updates both the brush and the UI
 func _mix_and_update_brush():
+	var final_rgb_color: Color
+	
+	# Mix the RGB values of the selected pigments
 	if selected_pigments.is_empty():
-		# If no colors are selected, maybe default to black or a neutral gray
-		current_pigment_color = Color.BLACK
+		final_rgb_color = Color.GRAY # Default if nothing is selected
 	else:
 		# Simple averaging/blending of all selected colors
 		var mixed_color = selected_pigments[0]
 		for i in range(1, selected_pigments.size()):
 			mixed_color = mixed_color.blend(selected_pigments[i])
-		current_pigment_color = mixed_color
+		final_rgb_color = mixed_color
 
-	# Now that we have the final color, update the brush
+	# Calculate the final alpha based on the water slider
+	# More water = more transparent = lower alpha
+	var final_alpha = 1.0 - current_water_amount
+	
+	# Create the final color for the brush
+	current_pigment_color = Color(final_rgb_color.r, final_rgb_color.g, final_rgb_color.b, final_alpha)
+	
+	# Update the actual brush with its final properties
 	_update_active_brush_properties()
+	# Update the color swatch UI
+	if is_instance_valid(current_color_display):
+		# We set the display's color to the final mixed color, including transparency.
+		# Because it's drawn on top of the white 'color_swatch', it will look correct.
+		current_color_display.color = current_pigment_color
 
-	# Update the color of the "current color" display square
-	get_node(current_color_display_path).color = current_pigment_color
 
 # --- UI Signal Receivers ---
 # Connect the 'pressed' signal from your UI Buttons to these functions.
@@ -161,5 +181,6 @@ func _on_yellow_button_toggled(is_on: bool):
 func _on_water_slider_value_changed(value: float):
 	# The slider's value is from 0 to 1
 	current_water_amount = value
+	_mix_and_update_brush()
 	print("Current water amount : ", value)
 	_update_active_brush_properties()

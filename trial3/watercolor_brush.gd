@@ -2,7 +2,7 @@
 extends Node
 
 # --- Brush Properties ---
-@export var brush_color: Color = Color(0.1, 0.2, 0.8, 0.5) # Color and alpha (pigment concentration)
+@export var brush_color: Color = Color.BLACK # Color and alpha (pigment concentration)
 @export var water_amount: float = 0.05 # How much water this brush lays down (0.0 to 1.0)
 @export var base_brush_size: float = 2.0 # Base size for dabs
 @export var dabs_per_frame: int = 1     # How many dabs to make while dragging

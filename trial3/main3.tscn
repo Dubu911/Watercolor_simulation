@@ -31,9 +31,9 @@ script = ExtResource("1_bp1uf")
 [node name="static_layer" type="Sprite2D" parent="layers_container"]
 
 [node name="mobile_layer" type="Sprite2D" parent="layers_container"]
-visible = false
 
 [node name="water_layer" type="Sprite2D" parent="layers_container"]
+visible = false
 texture_filter = 1
 
 [node name="pencil_layer" type="Sprite2D" parent="layers_container"]
@@ -45,7 +45,7 @@ watercolor_brush_path = NodePath("watercolor_brush")
 pencil_brush_path = NodePath("pencil_brush")
 eraser_brush_path = NodePath("eraser_brush")
 layer_for_mouse_pos_path = NodePath("../layers_container/mobile_layer")
-current_color_display_path = NodePath("../CanvasLayer/current_color_display")
+current_color_display_path = NodePath("../CanvasLayer/color_swatch/current_color_display")
 
 [node name="watercolor_brush" type="Node" parent="brush_manager"]
 script = ExtResource("2_shnf3")
@@ -145,11 +145,16 @@ max_value = 1.0
 step = 0.01
 value = 0.05
 
-[node name="current_color_display" type="ColorRect" parent="CanvasLayer"]
+[node name="color_swatch" type="ColorRect" parent="CanvasLayer"]
 offset_left = 931.0
 offset_top = 299.0
-offset_right = 978.0
+offset_right = 980.0
 offset_bottom = 352.0
+
+[node name="current_color_display" type="ColorRect" parent="CanvasLayer/color_swatch"]
+z_index = 1
+offset_right = 49.0
+offset_bottom = 53.0
 
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/watercolor_button" to="brush_manager" method="_on_watercolor_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/pencil_button" to="brush_manager" method="_on_pencil_button_pressed"]
