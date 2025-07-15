@@ -17,11 +17,11 @@
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_a7fc4"]
 bg_color = Color(1, 0, 1, 1)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tg5ul"]
-bg_color = Color(0, 1, 1, 1)
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_x1wqm"]
 bg_color = Color(1, 1, 0, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tg5ul"]
+bg_color = Color(0, 1, 1, 1)
 
 [node name="main3" type="Node2D"]
 script = ExtResource("1_bp1uf")
@@ -46,6 +46,9 @@ pencil_brush_path = NodePath("pencil_brush")
 eraser_brush_path = NodePath("eraser_brush")
 layer_for_mouse_pos_path = NodePath("../layers_container/mobile_layer")
 current_color_display_path = NodePath("../CanvasLayer/color_swatch/current_color_display")
+magenta_button_path = NodePath("../CanvasLayer/color_controls/magenta_control/magenta")
+cyan_button_path = NodePath("../CanvasLayer/color_controls/cyan_control/cyan")
+yellow_button_path = NodePath("../CanvasLayer/color_controls/yellow_control/yellow")
 
 [node name="watercolor_brush" type="Node" parent="brush_manager"]
 script = ExtResource("2_shnf3")
@@ -117,24 +120,54 @@ offset_bottom = 55.0
 [node name="pigment" type="Label" parent="CanvasLayer/color_controls"]
 layout_mode = 2
 
-[node name="magenta" type="Button" parent="CanvasLayer/color_controls"]
-custom_minimum_size = Vector2(40, 0)
+[node name="magenta_control" type="VBoxContainer" parent="CanvasLayer/color_controls"]
+layout_mode = 2
+
+[node name="magenta" type="Button" parent="CanvasLayer/color_controls/magenta_control"]
+custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
 theme_override_styles/hover = SubResource("StyleBoxFlat_155ov")
 theme_override_styles/normal = SubResource("StyleBoxFlat_a7fc4")
 toggle_mode = true
 
-[node name="cyan" type="Button" parent="CanvasLayer/color_controls"]
-custom_minimum_size = Vector2(40, 0)
+[node name="magenta_alpha_slider" type="VSlider" parent="CanvasLayer/color_controls/magenta_control"]
+custom_minimum_size = Vector2(20, 70)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 0.5
+
+[node name="yellow_control" type="VBoxContainer" parent="CanvasLayer/color_controls"]
+layout_mode = 2
+
+[node name="yellow" type="Button" parent="CanvasLayer/color_controls/yellow_control"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_x1wqm")
+toggle_mode = true
+
+[node name="yellow_alpha_slider" type="VSlider" parent="CanvasLayer/color_controls/yellow_control"]
+custom_minimum_size = Vector2(20, 70)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 0.5
+
+[node name="cyan_control" type="VBoxContainer" parent="CanvasLayer/color_controls"]
+layout_mode = 2
+
+[node name="cyan" type="Button" parent="CanvasLayer/color_controls/cyan_control"]
+custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_tg5ul")
 toggle_mode = true
 
-[node name="yellow" type="Button" parent="CanvasLayer/color_controls"]
-custom_minimum_size = Vector2(40, 0)
+[node name="cyan_alpha_slider" type="VSlider" parent="CanvasLayer/color_controls/cyan_control"]
+custom_minimum_size = Vector2(20, 70)
 layout_mode = 2
-theme_override_styles/normal = SubResource("StyleBoxFlat_x1wqm")
-toggle_mode = true
+max_value = 1.0
+step = 0.01
+value = 0.5
 
 [node name="water_slider" type="VSlider" parent="CanvasLayer"]
 offset_left = 982.0
@@ -143,7 +176,7 @@ offset_right = 1009.0
 offset_bottom = 364.0
 max_value = 1.0
 step = 0.01
-value = 0.05
+value = 0.1
 
 [node name="color_swatch" type="ColorRect" parent="CanvasLayer"]
 offset_left = 931.0
@@ -159,7 +192,10 @@ offset_bottom = 53.0
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/watercolor_button" to="brush_manager" method="_on_watercolor_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/pencil_button" to="brush_manager" method="_on_pencil_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/eraser_button" to="brush_manager" method="_on_eraser_button_pressed"]
-[connection signal="toggled" from="CanvasLayer/color_controls/magenta" to="brush_manager" method="_on_magenta_button_toggled"]
-[connection signal="toggled" from="CanvasLayer/color_controls/cyan" to="brush_manager" method="_on_cyan_button_toggled"]
-[connection signal="toggled" from="CanvasLayer/color_controls/yellow" to="brush_manager" method="_on_yellow_button_toggled"]
+[connection signal="toggled" from="CanvasLayer/color_controls/magenta_control/magenta" to="brush_manager" method="_on_magenta_button_toggled"]
+[connection signal="value_changed" from="CanvasLayer/color_controls/magenta_control/magenta_alpha_slider" to="brush_manager" method="_on_magenta_alpha_slider_changed"]
+[connection signal="toggled" from="CanvasLayer/color_controls/yellow_control/yellow" to="brush_manager" method="_on_yellow_button_toggled"]
+[connection signal="value_changed" from="CanvasLayer/color_controls/yellow_control/yellow_alpha_slider" to="brush_manager" method="_on_yellow_alpha_slider_changed"]
+[connection signal="toggled" from="CanvasLayer/color_controls/cyan_control/cyan" to="brush_manager" method="_on_cyan_button_toggled"]
+[connection signal="value_changed" from="CanvasLayer/color_controls/cyan_control/cyan_alpha_slider" to="brush_manager" method="_on_cyan_alpha_slider_changed"]
 [connection signal="value_changed" from="CanvasLayer/water_slider" to="brush_manager" method="_on_water_slider_value_changed"]

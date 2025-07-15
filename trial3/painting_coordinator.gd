@@ -168,35 +168,41 @@ func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 				var draw_y = int(pos.y + y_offset)
 
 				if draw_x >= 0 and draw_x < CANVAS_WIDTH and draw_y >= 0 and draw_y < CANVAS_HEIGHT:
+					# --- Add water ---
 					var current_water = water_read_buffer.get_pixel(draw_x, draw_y).r
 					var new_water = min(MAX_WATER_AMOUNT, current_water + water)
 					water_read_buffer.set_pixel(draw_x, draw_y, Color(new_water, 0, 0))
 					
-					# --- Add color to the mobile pigment layer ---
-					var src = color # The new color from the brush (Source)
-					var dst = mobile_read_buffer.get_pixel(draw_x, draw_y) # The existing color (Destination)
+					# --- Mix Pigment ---
+					var new_pigment_wash = color # The color from the brush
+					var existing_pigment_wash = mobile_read_buffer.get_pixel(draw_x, draw_y)
 					
-					# *** THE FIX IS HERE: Correct alpha compositing logic ***
-					# This formula correctly layers a semi-transparent color on top of another.
+					# Use the new helper function to correctly mix the two washes
+					var final_mixed_color = _mix_washes(new_pigment_wash, existing_pigment_wash)
 					
-					# Calculate the final alpha value
-					var out_a = src.a + dst.a * (1.0 - src.a)
-
-					var out_r = 0.0
-					var out_g = 0.0
-					var out_b = 0.0
-
-					# Check to avoid division by zero if the final color is fully transparent
-					if out_a > 0.0001:
-						# This is the standard "source-over" formula for non-premultiplied alpha
-						out_r = (src.r * src.a + dst.r * dst.a * (1.0 - src.a)) / out_a
-						out_g = (src.g * src.a + dst.g * dst.a * (1.0 - src.a)) / out_a
-						out_b = (src.b * src.a + dst.b * dst.a * (1.0 - src.a)) / out_a
-					
-					var layered_color = Color(out_r, out_g, out_b, out_a)
-					mobile_read_buffer.set_pixel(draw_x, draw_y, layered_color)
+					mobile_read_buffer.set_pixel(draw_x, draw_y, final_mixed_color)
 	
 	mark_watercolor_dirty()
+	
+# This function simulates adding a new wash to an existing wet area.
+func _mix_washes(new_wash: Color, existing_wash: Color) -> Color:
+	# If the existing area is dry, just use the new wash.
+	if existing_wash.a < 0.001:
+		return new_wash
+	# If the new wash is just water (no pigment), the color doesn't change, only water amount does (handled elsewhere).
+	if new_wash.a < 0.001:
+		return existing_wash
+
+	# Calculate the total concentration (alpha) of the new mixture.
+	var total_alpha = new_wash.a + existing_wash.a
+	var final_alpha = min(1.0, total_alpha) # Cap at 1.0
+
+	# Calculate the new color as a weighted average based on concentration.
+	var final_r = (new_wash.r * new_wash.a + existing_wash.r * existing_wash.a) / total_alpha
+	var final_g = (new_wash.g * new_wash.a + existing_wash.g * existing_wash.a) / total_alpha
+	var final_b = (new_wash.b * new_wash.a + existing_wash.b * existing_wash.a) / total_alpha
+	
+	return Color(final_r, final_g, final_b, final_alpha)
 
 
 func draw_line_on_pencil_layer(from_pos: Vector2, to_pos: Vector2, color: Color, radius: float):

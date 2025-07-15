@@ -332,30 +332,45 @@ func _apply_water_displacement_outflow_model(delta: float):
 
 
 func _apply_water_displacement_outflow_model_with_pigment(delta: float):
-	water_write.blit_rect(water_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
-	mobile_write.blit_rect(mobile_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
+	water_write.fill(Color(0,0,0,0))
+	mobile_write.fill(Color(1,1,1,0))
 
-	# Loop through every pixel of the SOURCE (read) buffer
 	for y in range(canvas_height):
 		for x in range(canvas_width):
-			# 1. Calculate how much water and pigment are available to move.
 			var total_water_here = water_read.get_pixel(x,y).r
 			var capacity = absorbency_map.get_pixel(x,y).r
 			var movable_water = max(0.0, total_water_here - capacity)
 			
-			if movable_water < DRY_PIXEL_LIMIT:
-				continue # No movable water, so we do nothing for this pixel.
-
 			var pigment_here = mobile_read.get_pixel(x,y)
-			var movable_pigment_fraction = movable_water / total_water_here if total_water_here > 0.0001 else 0.0
-			var pigment_movable = pigment_here * movable_pigment_fraction
 			
-			# 2. Calculate potential outflows based on forces
+			# --- THE FIX IS HERE: Separate Hue from Concentration ---
+			var pigment_hue = Color(pigment_here.r, pigment_here.g, pigment_here.b, 1.0)
+			var pigment_concentration = pigment_here.a
+			
+			var movable_concentration_fraction = 0.0
+			if total_water_here > 0.0001:
+				movable_concentration_fraction = movable_water / total_water_here
+			
+			# Calculate the amount of CONCENTRATION (alpha) that moves vs. stays
+			var concentration_movable = pigment_concentration * movable_concentration_fraction
+			var concentration_staying = pigment_concentration - concentration_movable
+			
+			# Create the color packets. The HUE (RGB) is the same for both!
+			var pigment_movable = Color(pigment_hue.r, pigment_hue.g, pigment_hue.b, concentration_movable)
+			var pigment_staying = Color(pigment_hue.r, pigment_hue.g, pigment_hue.b, concentration_staying)
+			
+			var water_staying = total_water_here - movable_water
+			water_write.set_pixel(x,y, Color(water_write.get_pixel(x,y).r + water_staying, 0, 0))
+			mobile_write.set_pixel(x,y, _layer_colors(pigment_staying, mobile_write.get_pixel(x,y)))
+			
+			if movable_water < DRY_PIXEL_LIMIT:
+				continue
+
 			var F = displacement_map.get_pixel(x,y)
-			var want_r = max(0.0,  F.r) * delta
-			var want_l = max(0.0, -F.r) * delta
-			var want_d = max(0.0,  F.g) * delta
-			var want_u = max(0.0, -F.g) * delta
+			var want_r = max(0.0,  F.r) * movable_water * delta
+			var want_l = max(0.0, -F.r) * movable_water * delta
+			var want_d = max(0.0,  F.g) * movable_water * delta
+			var want_u = max(0.0, -F.g) * movable_water * delta
 
 			# 3. Identify blocked paths and sum the blocked flow.
 			var total_blocked_flow = 0.0
@@ -377,38 +392,31 @@ func _apply_water_displacement_outflow_model_with_pigment(delta: float):
 				if want_d > 0.0: want_d += want_d * redistributed_flow_proportion
 				if want_u > 0.0: want_u += want_u * redistributed_flow_proportion
 
-			# 5. Scale total outflow to conserve mass.
+			# --- Step 3: Scale total outflow to conserve mass ---
 			var total_outflow_proportion = want_r + want_l + want_d + want_u
 			if total_outflow_proportion > 1.0:
 				var scaling_factor = 1.0 / total_outflow_proportion
 				want_r *= scaling_factor; want_l *= scaling_factor
 				want_d *= scaling_factor; want_u *= scaling_factor
 			
-			# 6. Commit the transfers using the helper function.
-			if want_r > 0.0: _transfer_content(x, y, x + 1, y, movable_water * want_r, pigment_movable * want_r)
-			if want_l > 0.0: _transfer_content(x, y, x - 1, y, movable_water * want_l, pigment_movable * want_l)
-			if want_d > 0.0: _transfer_content(x, y, x, y + 1, movable_water * want_d, pigment_movable * want_d)
-			if want_u > 0.0: _transfer_content(x, y, x, y - 1, movable_water * want_u, pigment_movable * want_u)
+			# --- Step 4: Commit the transfers by ADDING to the neighbors ---
+			if want_r > 0.0: _add_content(x + 1, y, movable_water * want_r, pigment_movable * want_r)
+			if want_l > 0.0: _add_content(x - 1, y, movable_water * want_l, pigment_movable * want_l)
+			if want_d > 0.0: _add_content(x, y + 1, movable_water * want_d, pigment_movable * want_d)
+			if want_u > 0.0: _add_content(x, y - 1, movable_water * want_u, pigment_movable * want_u)
 
 # --- HELPER FUNCTIONS ---
 
 # A new helper function to make transfers atomic and clean
-func _transfer_content(from_x, from_y, to_x, to_y, water_amount, pigment_color):
-	# Check boundaries
-	if to_x < 0 or to_x >= canvas_width or to_y < 0 or to_y >= canvas_height:
-		return
-
-	# Subtract from source (in the write buffer)
-	var source_water = water_write.get_pixel(from_x, from_y).r
-	water_write.set_pixel(from_x, from_y, Color(source_water - water_amount, 0, 0))
-	var source_pigment = mobile_write.get_pixel(from_x, from_y)
-	mobile_write.set_pixel(from_x, from_y, source_pigment - pigment_color)
+func _add_content(x: int, y: int, water_amount: float, pigment_color: Color):
+	# Add water
+	var current_water = water_write.get_pixel(x, y).r
+	water_write.set_pixel(x, y, Color(current_water + water_amount, 0, 0))
 	
-	# Add to destination (in the write buffer)
-	var dest_water_new = water_write.get_pixel(to_x, to_y).r + water_amount
-	var dest_pigment_new = _layer_colors(pigment_color, mobile_write.get_pixel(to_x, to_y))
-	water_write.set_pixel(to_x, to_y, Color(dest_water_new, 0, 0))
-	mobile_write.set_pixel(to_x, to_y, dest_pigment_new)
+	# Add pigment by layering
+	var current_pigment = mobile_write.get_pixel(x, y)
+	mobile_write.set_pixel(x, y, _layer_colors(pigment_color, current_pigment))
+
 
 # Standard "source-over" alpha compositing function.
 func _layer_colors(source_color: Color, dest_color: Color) -> Color:
