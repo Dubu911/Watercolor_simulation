@@ -31,9 +31,9 @@ script = ExtResource("1_bp1uf")
 [node name="static_layer" type="Sprite2D" parent="layers_container"]
 
 [node name="mobile_layer" type="Sprite2D" parent="layers_container"]
+visible = false
 
 [node name="water_layer" type="Sprite2D" parent="layers_container"]
-visible = false
 texture_filter = 1
 
 [node name="pencil_layer" type="Sprite2D" parent="layers_container"]

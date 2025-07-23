@@ -111,7 +111,6 @@ func _unhandled_input(event: InputEvent):
 # This function calculates the final mixed color and updates both the brush and the UI
 # --- The core logic for calculating the final brush color ---
 func _mix_and_update_all():
-	# 1. Mix the RGB values using subtractive mixing (multiplication)
 	var final_rgb_color = Color.WHITE
 	var pigments_in_mix = 0
 	for pigment_hue in pigment_states:
@@ -122,22 +121,17 @@ func _mix_and_update_all():
 			final_rgb_color.b *= pigment_hue.b
 			pigments_in_mix += 1
 	
-	if pigments_in_mix == 0:
-		final_rgb_color = Color.BLACK 
+	if pigments_in_mix == 0: final_rgb_color = Color.BLACK 
 
-	# 2. Calculate the final ALPHA by layering the selected pigments
-	var final_alpha_color = Color(1, 1, 1, 0) # Start with transparent white
+	var final_alpha_color = Color(1, 1, 1, 0)
 	for pigment_hue in pigment_states:
 		var state = pigment_states[pigment_hue]
 		if state.selected:
 			var current_pigment = Color(pigment_hue.r, pigment_hue.g, pigment_hue.b, state.alpha)
 			final_alpha_color = _layer_colors(current_pigment, final_alpha_color)
 			
-	# 3. Create the final color and update the brush
 	current_pigment_color = Color(final_rgb_color.r, final_rgb_color.g, final_rgb_color.b, final_alpha_color.a)
 	_update_active_brush_properties()
-	
-	# 4. Update the UI display
 	if is_instance_valid(current_color_display):
 		current_color_display.color = current_pigment_color
 
@@ -163,9 +157,6 @@ func _update_active_brush_properties():
 	var active_brush = painting_coordinator.get("active_brush_node")
 	if not is_instance_valid(active_brush): return
 	# Update color for any brush that isn't the eraser
-	if active_brush != eraser_brush and active_brush.has_method("set_active_color"):
-		active_brush.set_active_color(current_pigment_color)
-	# Update water amount only for the watercolor brush
 	if active_brush == watercolor_brush:
 		active_brush.set_active_color(current_pigment_color)
 		active_brush.set_water_amount(current_water_amount)
