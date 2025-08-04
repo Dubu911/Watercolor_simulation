@@ -34,7 +34,6 @@ script = ExtResource("1_bp1uf")
 visible = false
 
 [node name="water_layer" type="Sprite2D" parent="layers_container"]
-texture_filter = 1
 
 [node name="pencil_layer" type="Sprite2D" parent="layers_container"]
 

@@ -6,11 +6,11 @@ const DIFFUSION_RATE = 0.1
 const EVAPORATION_RATE = 0.005
 #const S = 0.5 # Surface tension coefficient
 #const SP = 1.3 # Spread force coefficient
-@export var S: float = 0.50 # Surface tension coefficient
-@export var SP: float = 0.9 # Spread force coefficient
+@export var S: float = 0.10 # Surface tension coefficient
+@export var SP: float = 0.50 # Spread force coefficient
 @export var HOLD_THRESHOLD = 3.5 # The force needed to wet a dry pixel
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
-const ENERGY_LOSS_ON_REDISTRIBUTION = 0.3 # How much energy is lost when flow is redirected
+const ENERGY_LOSS_ON_REDISTRIBUTION = 0.7 # How much energy is lost when flow is redirected
 
 
 # --- MEMBER VARIABLES TO HOLD REFERENCES TO DATA LAYERS ---
@@ -73,7 +73,8 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	#pass
 	#_simulate_evaporation(delta, water_img)
 	#_simulate_diffusion(delta, water_img, mobile_img) # pigments in mobile_image diffusses
-	_calculate_water_displacement(g_x, g_y)
+	#_calculate_water_displacement(g_x, g_y)
+	_calculate_water_displacement2(g_x, g_y)
 	_apply_water_displacement(delta) # surface water movements happen with pigments in mobile_image
 	#_apply_water_displacement_outflow_model(delta)
 	#_apply_water_displacement_outflow_model_with_pigment(delta)
@@ -183,11 +184,114 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			# Store x,y directional force
 			displacement_map.set_pixel(x, y, Color(Dx, Dy, 0))
 			
+
+# This function is an improved version. It calculates 4 directions.
+func _calculate_water_displacement2(g_x: float, g_y: float):
+	# Acceleration in x direction
+	for y in range(canvas_height):
+		for x in range(canvas_width):
+			# Horizontal Force Calculation
+			var water_amount = water_read.get_pixel(x,y).r
+			# 1. Gravity Force Component
+			var gravity_force_x = water_amount * g_x
+			
+			# . 2Surface Tension Force Component
+			var left_sum = 0.0
+			var right_sum = 0.0
+			var count = 0
+			
+			# Left side
+			for i in range(1,11):
+				if x-i >= 0 :
+					var amount = water_read.get_pixel(x-i,y).r
+					if amount <= DRY_PIXEL_LIMIT : break
+					left_sum += amount
+					count += 1
+			if count > 0: left_sum /= count
+			
+			# Right side
+			count = 0
+			for i in range(1,11):
+				if x+i < canvas_width:
+					var amount = water_read.get_pixel(x+i,y).r
+					if amount <= DRY_PIXEL_LIMIT : break
+					right_sum += amount
+					count += 1
+			if count > 0 : right_sum /= count
+			
+			var surface_tension_force_x = S * (right_sum - left_sum)
+		
+			
+			# 3. Spreading Force Component
+			var left_neighbor = 0.0
+			var right_neighbor = 0.0
+			if x-1 >= 0 :left_neighbor = water_read.get_pixel(x-1,y).r
+			if x+1 < canvas_width : right_neighbor = water_read.get_pixel(x+1,y).r
+			
+			var spread_force_r = SP * (water_amount - right_neighbor)
+			var spread_force_l = SP * (water_amount - left_neighbor)
+			
+			
+			# 4. Overall Force in x direction
+			var horizontal_net_force = gravity_force_x + surface_tension_force_x
+			var total_force_r = max(0, horizontal_net_force) + spread_force_r
+			var total_force_l = max(0, -horizontal_net_force) + spread_force_l
+			
+			
+			# Vertical Force Calculation
+			# 1. Gravity Force Component
+			var gravity_force_y = water_amount * g_y
+			
+			# . 2Surface Tension Force Component
+			var up_sum = 0.0
+			var down_sum = 0.0
+			count = 0
+			
+			# Up side
+			for i in range(1,11):
+				if y-i >= 0 :
+					var amount = water_read.get_pixel(x,y-i).r
+					if amount < DRY_PIXEL_LIMIT : break
+					up_sum += amount
+					count += 1
+			if count > 0: up_sum /= count
+			
+			# Down side
+			count = 0
+			for i in range(1,11):
+				if y+i < canvas_height:
+					var amount = water_read.get_pixel(x,y+i).r
+					if amount < DRY_PIXEL_LIMIT : break
+					down_sum += amount
+					count += 1
+			if count > 0 : down_sum /= count
+			
+			var surface_tension_force_y = S * (down_sum - up_sum)
+			
+			# 3. Spreading Force Component
+			var up_neighbor = 0.0
+			var down_neighbor = 0.0
+			if y-1 >= 0 :up_neighbor = water_read.get_pixel(x,y-1).r
+			if y+1 < canvas_height : down_neighbor = water_read.get_pixel(x,y+1).r
+			
+			var spread_force_u = SP * (water_amount - up_neighbor)
+			var spread_force_d = SP * (water_amount - down_neighbor)
+
+
+			# 4. Overall Force in x direction
+			var vertical_net_force = gravity_force_y + surface_tension_force_y
+			var total_force_d = max(0, vertical_net_force) + spread_force_d
+			var total_force_u = max(0, -vertical_net_force) + spread_force_u
+			
+			# Store x,y directional force
+			displacement_map.set_pixel(x, y, Color(total_force_r, total_force_l, total_force_d, total_force_u))
+
 # Move the water based on the calculated forces.(Inflow model)
 func _apply_water_displacement(delta: float):
 	# copy the current state to the write buffer.
-	#water_write.blit_rect(water_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
 	water_write.fill(Color(0,0,0,0))
+	mobile_write.blit_rect(mobile_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
+
 	
 	# Now, iterate and apply transfers between pixels.
 	for y in range(canvas_height):
@@ -204,9 +308,9 @@ func _apply_water_displacement(delta: float):
 			# force field from previous stage
 			var F = displacement_map.get_pixel(x,y)
 			var want_r = max(0.0, F.r) * movable_water * delta
-			var want_l = max(0.0,-F.r) * movable_water * delta
-			var want_d = max(0.0, F.g) * movable_water * delta
-			var want_u = max(0.0,-F.g) * movable_water * delta
+			var want_l = max(0.0, F.g) * movable_water * delta
+			var want_d = max(0.0, F.b) * movable_water * delta
+			var want_u = max(0.0, F.a) * movable_water * delta
 			
 			var directions = [["right",want_r],["left",want_l],["down",want_d], ["up",want_u]]
 			directions.sort_custom(func(a, b): return a[1] > b[1])
@@ -248,90 +352,6 @@ func _apply_water_displacement(delta: float):
 				
 			var current_val_at_source = water_write.get_pixel(x, y).r
 			water_write.set_pixel(x, y, Color(current_val_at_source + total_here - total_outflow, 0, 0))
-			
-			# Add the outflow amounts to the neighbors in the write buffer
-			if want_r > 0.0:
-				var neighbor_val = water_write.get_pixel(x + 1, y).r
-				water_write.set_pixel(x + 1, y, Color(neighbor_val + want_r, 0, 0))
-			if want_l > 0.0:
-				var neighbor_val = water_write.get_pixel(x - 1, y).r
-				water_write.set_pixel(x - 1, y, Color(neighbor_val + want_l, 0, 0))
-			if want_d > 0.0:
-				var neighbor_val = water_write.get_pixel(x, y + 1).r
-				water_write.set_pixel(x, y + 1, Color(neighbor_val + want_d, 0, 0))
-			if want_u > 0.0:
-				var neighbor_val = water_write.get_pixel(x, y - 1).r
-				water_write.set_pixel(x, y - 1, Color(neighbor_val + want_u, 0, 0))
-
-
-# Outflow model
-func _apply_water_displacement_outflow_model(delta: float):
-	 #Getting write buffer ready for work
-	water_write.fill(Color(0,0,0,0))
-	mobile_write.fill(Color(1,1,1,0))
-
-	for y in range(canvas_height):
-		for x in range(canvas_width):
-
-			var total_here = water_read.get_pixel(x,y).r
-			var capacity = absorbency_map.get_pixel(x,y).r  # 0.0 if unused
-			#var capacity = 0.3
-			var movable_water = max(0.0, total_here - capacity)
-		
-		
-			if movable_water < DRY_PIXEL_LIMIT:
-				var current_val = water_write.get_pixel(x,y).r
-				water_write.set_pixel(x,y, Color(current_val + total_here, 0, 0))
-				continue
-
-			# force field from previous stage
-			var F = displacement_map.get_pixel(x,y)
-			var want_r = max(0.0, F.r) * movable_water * delta
-			var want_l = max(0.0,-F.r) * movable_water * delta
-			var want_d = max(0.0, F.g) * movable_water * delta
-			var want_u = max(0.0,-F.g) * movable_water * delta
-
-			# Identify blocked paths and sum the blocked flow.
-			var total_blocked_flow = 0.0
-			
-			if x < canvas_width - 1 and water_read.get_pixel(x+1,y).r < DRY_PIXEL_LIMIT and want_r < HOLD_THRESHOLD:
-				total_blocked_flow += want_r; want_r = 0.0
-			if x > 0 and water_read.get_pixel(x-1,y).r < DRY_PIXEL_LIMIT and want_l < HOLD_THRESHOLD:
-				total_blocked_flow += want_l; want_l = 0.0
-			if y < canvas_height - 1 and water_read.get_pixel(x,y+1).r < DRY_PIXEL_LIMIT and want_d < HOLD_THRESHOLD:
-				total_blocked_flow += want_d; want_d = 0.0
-			if y > 0 and water_read.get_pixel(x,y-1).r < DRY_PIXEL_LIMIT and want_u < HOLD_THRESHOLD:
-				total_blocked_flow += want_u; want_u = 0.0
-
-			# Redistribute the blocked flow to any open paths.
-			var open_paths_count = 0
-			if want_r > 0.0: open_paths_count += 1
-			if want_l > 0.0: open_paths_count += 1
-			if want_d > 0.0: open_paths_count += 1
-			if want_u > 0.0: open_paths_count += 1
-			
-			if open_paths_count > 0 and total_blocked_flow > 0:
-				var redistributed_flow = (total_blocked_flow * ENERGY_LOSS_ON_REDISTRIBUTION) / open_paths_count
-				if want_r > 0.0: want_r += redistributed_flow
-				if want_l > 0.0: want_l += redistributed_flow
-				if want_d > 0.0: want_d += redistributed_flow
-				if want_u > 0.0: want_u += redistributed_flow
-			# Scale down outflows if they exceed the available movable water
-			var total_outflow = want_r + want_l + want_d + want_u
-			if total_outflow > movable_water:
-				var scaling_factor = movable_water / total_outflow
-				want_r *= scaling_factor
-				want_l *= scaling_factor
-				want_d *= scaling_factor
-				want_u *= scaling_factor
-				total_outflow = movable_water # The total is now exactly the movable amount
-
-			# --- Commit the transfers using the ACCUMULATOR pattern ---
-			
-			# Add the water that STAYS to the write buffer at the source pixel
-			var water_staying = total_here - total_outflow
-			var source_val = water_write.get_pixel(x, y).r
-			water_write.set_pixel(x, y, Color(source_val + water_staying, 0, 0))
 			
 			# Add the outflow amounts to the neighbors in the write buffer
 			if want_r > 0.0:

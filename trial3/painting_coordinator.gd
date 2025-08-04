@@ -103,7 +103,7 @@ func _ready():
 	
 	# Physics layers
 	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
-	displacement_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGF)
+	displacement_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	
 	# Initialize the paper properties
 	_initialize_paper_properties()
