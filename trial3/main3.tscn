@@ -34,6 +34,7 @@ script = ExtResource("1_bp1uf")
 visible = false
 
 [node name="water_layer" type="Sprite2D" parent="layers_container"]
+texture_filter = 1
 
 [node name="pencil_layer" type="Sprite2D" parent="layers_container"]
 
@@ -185,6 +186,7 @@ offset_bottom = 352.0
 
 [node name="current_color_display" type="ColorRect" parent="CanvasLayer/color_swatch"]
 z_index = 1
+layout_mode = 0
 offset_right = 49.0
 offset_bottom = 53.0
 

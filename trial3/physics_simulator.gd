@@ -8,7 +8,7 @@ const EVAPORATION_RATE = 0.005
 #const SP = 1.3 # Spread force coefficient
 @export var S: float = 0.10 # Surface tension coefficient
 @export var SP: float = 0.50 # Spread force coefficient
-@export var HOLD_THRESHOLD = 3.5 # The force needed to wet a dry pixel
+@export var HOLD_THRESHOLD = 1.0 # The force needed to wet a dry pixel
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
 const ENERGY_LOSS_ON_REDISTRIBUTION = 0.7 # How much energy is lost when flow is redirected
 
@@ -75,9 +75,8 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	#_simulate_diffusion(delta, water_img, mobile_img) # pigments in mobile_image diffusses
 	#_calculate_water_displacement(g_x, g_y)
 	_calculate_water_displacement2(g_x, g_y)
-	_apply_water_displacement(delta) # surface water movements happen with pigments in mobile_image
-	#_apply_water_displacement_outflow_model(delta)
-	#_apply_water_displacement_outflow_model_with_pigment(delta)
+	_apply_water_displacement(delta)
+	#_apply_water_displacement_outflow_model_with_pigment(delta) # surface water movements happen with pigments in mobile_image
 	# _simulate_deposition(delta, water_img, mobile_img, static_img) # mobile_image -> static_image
 	
 	# Swap both sets of buffers for the next frame
@@ -101,7 +100,7 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			# 1. Gravity Force Component
 			var gravity_force_x = water_amount * g_x
 			
-			# . 2Surface Tension Force Component
+			# 2. Surface Tension Force Component
 			var left_sum = 0.0
 			var right_sum = 0.0
 			var count = 0
@@ -184,7 +183,6 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			# Store x,y directional force
 			displacement_map.set_pixel(x, y, Color(Dx, Dy, 0))
 			
-
 # This function is an improved version. It calculates 4 directions.
 func _calculate_water_displacement2(g_x: float, g_y: float):
 	# Acceleration in x direction
@@ -486,7 +484,7 @@ func _add_content(x: int, y: int, water_amount: float, pigment_color: Color):
 	
 	# Add pigment by layering
 	var current_pigment = mobile_write.get_pixel(x, y)
-	mobile_write.set_pixel(x, y, _layer_colors(pigment_color, current_pigment))
+	mobile_write.set_pixel(x, y, _mix_pigments_cmy(pigment_color, current_pigment))
 
 func _layer_colors(pigment1: Color, pigment2: Color) -> Color:
 	# If one pigment has no concentration, just return the other.
@@ -507,6 +505,42 @@ func _layer_colors(pigment1: Color, pigment2: Color) -> Color:
 	var final_g = total_g / total_alpha
 	var final_b = total_b / total_alpha
 	
+	return Color(final_r, final_g, final_b, final_alpha)
+
+func _mix_pigments_cmy(pigment1: Color, pigment2: Color) -> Color:
+	# --- Step 0: Handle special cases & prevent contamination ---
+
+	# Case 1: The incoming pigment is transparent. Return the existing color.
+	if pigment1.a < 0.0001:
+		return pigment2
+
+	# Case 2: The existing color is the initial "transparent white".
+	# Ignore it completely and just return the new incoming pigment.
+	if pigment2.a < 0.0001:
+		# We can also check if it's white: and pigment2.r > 0.99
+		return pigment1
+
+	# --- If we get here, both pigments are real colors, so we mix them. ---
+
+	# Step 1: Convert source RGB colors to CMY
+	var cmy1 = Vector3(1.0 - pigment1.r, 1.0 - pigment1.g, 1.0 - pigment1.b)
+	var cmy2 = Vector3(1.0 - pigment2.r, 1.0 - pigment2.g, 1.0 - pigment2.b)
+
+	# Step 2: Perform a weighted average in CMY space
+	var total_alpha = pigment1.a + pigment2.a
+	if total_alpha < 0.0001: return Color(0,0,0,0)
+
+	var final_c = ((cmy1.x * pigment1.a) + (cmy2.x * pigment2.a)) / total_alpha
+	var final_m = ((cmy1.y * pigment1.a) + (cmy2.y * pigment2.a)) / total_alpha
+	var final_y = ((cmy1.z * pigment1.a) + (cmy2.z * pigment2.a)) / total_alpha
+
+	# Step 3: Convert the final CMY color back to RGB
+	var final_r = 1.0 - final_c
+	var final_g = 1.0 - final_m
+	var final_b = 1.0 - final_y
+	
+	var final_alpha = min(1.0, total_alpha)
+
 	return Color(final_r, final_g, final_b, final_alpha)
 
 
