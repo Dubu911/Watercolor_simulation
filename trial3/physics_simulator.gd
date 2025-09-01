@@ -74,7 +74,7 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	#_simulate_evaporation(delta, water_img)
 	#_simulate_diffusion(delta, water_img, mobile_img) # pigments in mobile_image diffusses
 	#_calculate_water_displacement(g_x, g_y)
-	_calculate_water_displacement2(g_x, g_y)
+	_calculate_water_displacement_improved(g_x, g_y)
 	_apply_water_displacement(delta)
 	#_apply_water_displacement_outflow_model_with_pigment(delta) # surface water movements happen with pigments in mobile_image
 	# _simulate_deposition(delta, water_img, mobile_img, static_img) # mobile_image -> static_image
@@ -184,7 +184,7 @@ func _calculate_water_displacement(g_x: float, g_y: float):
 			displacement_map.set_pixel(x, y, Color(Dx, Dy, 0))
 			
 # This function is an improved version. It calculates 4 directions.
-func _calculate_water_displacement2(g_x: float, g_y: float):
+func _calculate_water_displacement_improved(g_x: float, g_y: float):
 	# Acceleration in x direction
 	for y in range(canvas_height):
 		for x in range(canvas_width):
