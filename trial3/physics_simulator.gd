@@ -12,7 +12,7 @@ const EVAPORATION_RATE = 0.005
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
 const ENERGY_LOSS_ON_REDISTRIBUTION = 0.7 # How much energy is lost when flow is redirected
 const K_ABSORPTION = 3.0 # Higher numbers make the paint more opaque, faster.
-const EPS_A := 1e-6            # avoid log(0)
+const EPS_A := 1e-6 # avoid log(0)
 
 
 # --- MEMBER VARIABLES TO HOLD REFERENCES TO DATA LAYERS ---
@@ -484,6 +484,7 @@ func _add_content(x: int, y: int, water_amount: float, pigment_color: Color):
 	
 	# Add pigment
 	var incoming_pigment = mobile_write.get_pixel(x, y)
+	#mobile_write.set_pixel(x, y, _mix_pigments_subtractive(pigment_color, incoming_pigment))
 	mobile_write.set_pixel(x, y, _mix_pigments_with_mass_conversion(pigment_color, incoming_pigment))
 
 func _mix_pigments_with_mass_conversion(pigment1: Color, pigment2: Color) -> Color:
