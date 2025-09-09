@@ -82,21 +82,21 @@ func _ready():
 	water_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	
 	# Mobile layer is for wet pigment, starts transparent
-	mobile_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
+	mobile_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	mobile_read_buffer.fill(Color(1, 1, 1, 0))  # Fill with transparent white
 	mobile_texture = ImageTexture.create_from_image(mobile_read_buffer)
 	mobile_layer_sprite.texture = mobile_texture
 	
-	mobile_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
+	mobile_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	
 	# Static layer is the "paper", starts white
-	static_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
+	static_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	static_image.fill(Color.WHITE)
 	static_texture = ImageTexture.create_from_image(static_image)
 	static_layer_sprite.texture = static_texture
 	
 	# The pencil layer starts transparent
-	pencil_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
+	pencil_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	pencil_image.fill(Color(0, 0, 0, 0))
 	pencil_texture = ImageTexture.create_from_image(pencil_image)
 	pencil_layer_sprite.texture = pencil_texture
