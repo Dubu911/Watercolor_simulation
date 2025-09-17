@@ -11,7 +11,7 @@ const EVAPORATION_RATE = 0.005
 @export var HOLD_THRESHOLD = 1.0 # The force needed to wet a dry pixel
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
 const ENERGY_LOSS_ON_REDISTRIBUTION = 0.7 # How much energy is lost when flow is redirected
-const K_ABSORPTION = 3.0 # Higher numbers make the paint more opaque, faster.
+const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
 const EPS_A := 1e-6 # avoid log(0)
 
 

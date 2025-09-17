@@ -277,7 +277,7 @@ func _initialize_paper_properties():
 	# Loop through every pixel to set its absorbency
 	for y in range(CANVAS_HEIGHT):
 		for x in range(CANVAS_WIDTH):
-			var random_absorbency = randf_range(0.1, 0.15)
+			var random_absorbency = randf_range(0.1, 0.2)
 			#var random_absorbency = 0.01
 			# Set the pixel value. Since the format is FORMAT_RF,
 			# the value is stored in the red channel.
