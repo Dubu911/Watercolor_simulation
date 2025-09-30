@@ -106,6 +106,8 @@ func _swap_mobile_buffers():
 	mobile_read = mobile_write
 	mobile_write = temp_mobile
 
+
+
 # This function calculates force acting on water due to gravity, surface tention and spreading.
 # This function is directly from David Small's paper.
 func _calculate_water_displacement(g_x: float, g_y: float):
