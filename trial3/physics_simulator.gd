@@ -3,7 +3,7 @@ extends Node
 
 # --- SIMULATION CONSTANTS ---
 const DIFFUSION_RATE = 0.1
-const EVAPORATION_RATE = 0.005
+const EVAPORATION_CONST = 0.1
 #const S = 0.5 # Surface tension coefficient
 #const SP = 1.3 # Spread force coefficient
 @export var S: float = 0.10 # Surface tension coefficient
@@ -73,7 +73,8 @@ func init(p_width: int, p_height: int, p_water_read: Image, p_mobile_read: Image
 	
 func run_simulation_step(delta: float, g_x: float, g_y: float):
 	# step 1, evaporation on the water layer
-	#_simulate_evaporation(delta, water_img)
+	_simulate_evaporation(delta)
+	_swap_water_buffers()
 	
 	# step 2, diffusion in the mobile layer. This is independent from water movement, about pigment movement
 	#_simulate_diffusion(delta, water_img, mobile_img) # pigments in mobile_image diffusses
@@ -89,16 +90,21 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	# step 5, the mobile layer pigment goes down to the static layer to set a concrete image.
 	# _simulate_deposition(delta, water_img, mobile_img, static_img) # mobile_image -> static_image
 	
-	# step 6, swap both sets of buffers for the next frame
+	_swap_water_buffers()
+	_swap_mobile_buffers()	
+	
+
+# --- PRIVATE SIMULATION FUNCTIONS ---
+# This functions is used in run_simulation_step to swap read, write buffers after physics calculation
+func _swap_water_buffers():	
 	var temp_water = water_read
 	water_read = water_write
 	water_write = temp_water
-	
+
+func _swap_mobile_buffers():
 	var temp_mobile = mobile_read
 	mobile_read = mobile_write
 	mobile_write = temp_mobile
-
-# --- PRIVATE SIMULATION FUNCTIONS ---
 
 # This function calculates force acting on water due to gravity, surface tention and spreading.
 # This function is directly from David Small's paper.
@@ -528,10 +534,29 @@ func _simulate_diffusion(delta: float, water: Image, mobile_pigment: Image):
 
 
 # This function will handle water evaporating from the canvas over time.
-func _simulate_evaporation(delta: float, water: Image):
-	# TODO: Implement evaporation logic here.
-	# This will likely involve reducing the water amount at each pixel slightly.
-	pass
+func _simulate_evaporation(delta: float):
+	for y in range(canvas_height):
+		for x in range(canvas_width):
+			var current_water_here = water_read.get_pixel(x,y).r
+			var water_right = 0.0
+			var water_left = 0.0
+			var water_up = 0.0
+			var water_down = 0.0
+			if x < canvas_width - 1 : water_right = water_read.get_pixel(x+1,y).r
+			if x > 0 : water_left = water_read.get_pixel(x-1,y).r
+			if y > 0 : water_up = water_read.get_pixel(x,y-1).r
+			if y < canvas_height - 1 : water_down = water_read.get_pixel(x,y+1).r
+			var total_surface = 0.1 # default value
+			var differences = []
+			differences.append(current_water_here - water_right)
+			differences.append(current_water_here - water_left)
+			differences.append(current_water_here - water_up)
+			differences.append(current_water_here - water_down)
+			for area in differences:
+				if area > 0.0 : total_surface += area
+			var evaporation_amount = total_surface * EVAPORATION_CONST * delta
+			var new_water = max(0.0, current_water_here - evaporation_amount)
+			water_write.set_pixel(x, y, Color(new_water, 0, 0))
 
 
 # This function will handle wet pigment getting "stuck" to the paper and becoming dry.
