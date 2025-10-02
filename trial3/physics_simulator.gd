@@ -3,7 +3,7 @@ extends Node
 
 # --- SIMULATION CONSTANTS ---
 const DIFFUSION_RATE = 0.1
-const EVAPORATION_CONST = 0.1
+const EVAPORATION_CONST = 0.0005
 #const S = 0.5 # Surface tension coefficient
 #const SP = 1.3 # Spread force coefficient
 @export var S: float = 0.10 # Surface tension coefficient
