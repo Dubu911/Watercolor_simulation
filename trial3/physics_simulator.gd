@@ -3,7 +3,7 @@ extends Node
 
 # --- SIMULATION CONSTANTS ---
 const DIFFUSION_RATE = 0.1
-const EVAPORATION_CONST = 0.0005
+const EVAPORATION_CONST = 0.1
 #const S = 0.5 # Surface tension coefficient
 #const SP = 1.3 # Spread force coefficient
 @export var S: float = 0.10 # Surface tension coefficient
@@ -452,7 +452,7 @@ func _apply_water_displacement_with_pigment(delta: float):
 				
 			# Caluation of remaining pigment after outflow of water
 			var fraction_outflow = 0.0
-			if current_water_here > 0.0001:
+			if current_water_here > 1e-6:
 				fraction_outflow = total_outflow / current_water_here
 
 			var pigment_alpha = pigment_here.a
