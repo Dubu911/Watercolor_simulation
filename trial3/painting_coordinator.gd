@@ -26,7 +26,8 @@ var water_read_buffer: Image
 var water_write_buffer: Image
 var mobile_read_buffer: Image
 var mobile_write_buffer : Image
-var static_image: Image
+var static_read_buffer: Image
+var static_write_buffer: Image
 var pencil_image: Image
 var absorbency_map : Image
 var displacement_map : Image
@@ -90,10 +91,12 @@ func _ready():
 	mobile_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	
 	# Static layer is the "paper", starts white
-	static_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	static_image.fill(Color.WHITE)
-	static_texture = ImageTexture.create_from_image(static_image)
+	static_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
+	static_read_buffer.fill(Color.WHITE)
+	static_texture = ImageTexture.create_from_image(static_read_buffer)
 	static_layer_sprite.texture = static_texture
+	
+	static_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	
 	# The pencil layer starts transparent
 	pencil_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
@@ -133,7 +136,8 @@ func _ready():
 								mobile_read_buffer,
 								water_write_buffer,
 								mobile_write_buffer,
-								static_image,
+								static_read_buffer,
+								static_write_buffer,
 								absorbency_map,
 								displacement_map)
 								
@@ -150,7 +154,7 @@ func _process(_delta: float):
 		if water_texture and water_read_buffer: water_texture.update(water_read_buffer)
 		
 		if mobile_texture and mobile_read_buffer: mobile_texture.update(mobile_read_buffer)
-		if static_texture and static_image: static_texture.update(static_image)
+		if static_texture and static_read_buffer: static_texture.update(static_read_buffer)
 		_dirty_watercolor = false
 	
 	if _dirty_pencil:
