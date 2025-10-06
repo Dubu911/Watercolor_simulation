@@ -3,16 +3,16 @@ extends Node
 
 # --- SIMULATION CONSTANTS ---
 const DIFFUSION_RATE = 0.1
-const EVAPORATION_CONST = 0.1
+const EVAPORATION_CONST = 0.01
 #const S = 0.5 # Surface tension coefficient
 #const SP = 1.3 # Spread force coefficient
 @export var S: float = 0.10 # Surface tension coefficient
 @export var SP: float = 0.50 # Spread force coefficient
-@export var HOLD_THRESHOLD = 0.8 # The force needed to wet a dry pixel
+@export var HOLD_THRESHOLD = 5.0 # The force needed to wet a dry pixel
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
-const ENERGY_LOSS_ON_REDISTRIBUTION = 0.7 # How much energy is lost when flow is redirected
+const ENERGY_LOSS_ON_REDISTRIBUTION = 0.5 # How much energy is lost when flow is redirected
 const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
-const EPS_A := 1e-6 # avoid log(0)
+const EPS_A = 1e-6 # avoid log(0)
 
 
 # --- MEMBER VARIABLES TO HOLD REFERENCES TO DATA LAYERS ---
@@ -88,7 +88,6 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	
 	# step 4, execute water movement based on step 3 information as well as pigment carried with the water.
 	#_apply_water_displacement(delta)
-	#_apply_water_displacement_with_pigment(delta)
 	_apply_water_displacement_with_pigment_inflow(delta)
 
 	# step 5, the mobile layer pigment goes down to the static layer to set a concrete image.
@@ -604,157 +603,147 @@ func _apply_water_displacement_with_pigment(delta: float):
 					var mass_out = mass_movable * (want_u / total_outflow)
 					_add_content(x, y - 1, want_u, Color(hue.r, hue.g, hue.b, _mass_to_alpha(mass_out)))
 
-# Improved function for GPU use. Inflow model eliminates data dependencies and race conditions.
 func _apply_water_displacement_with_pigment_inflow(delta: float):
 	water_write.fill(Color(0,0,0,0))
 	mobile_write.fill(Color(1,1,1,0))
 
 	for y in range(canvas_height):
 		for x in range(canvas_width):
-			# --- PART 1: CALCULATE THE CURRENT PIXEL'S OUTFLOW AND WHAT STAYS ---
-			var water_here = water_read.get_pixel(x,y).r
-			var pigment_here = mobile_read.get_pixel(x,y)
-			var capacity_here = absorbency_map.get_pixel(x,y).r
-			var movable_water_here = max(0.0, water_here - capacity_here)
-			
-			var F_here = displacement_map.get_pixel(x,y)
-			var want_r = max(0.0, F_here.r) * movable_water_here * delta
-			var want_l = max(0.0, F_here.g) * movable_water_here * delta
-			var want_d = max(0.0, F_here.b) * movable_water_here * delta
-			var want_u = max(0.0, F_here.a) * movable_water_here * delta
-			
-			var total_outflow = want_r + want_l + want_d + want_u
-			if total_outflow > movable_water_here:
-				var scaling_factor = movable_water_here / total_outflow
-				total_outflow *= scaling_factor
-			
-			var water_staying = water_here - total_outflow
-			var mass_staying = 0.0
-			var mass_here = _alpha_to_mass(pigment_here.a)
-			
-			if water_here > 1e-6:
-				# 1. Partition the pigment mass
-				var movable_mass_fraction = movable_water_here / water_here
-				var movable_pigment_mass = mass_here * movable_mass_fraction
-				var absorbed_pigment_mass = mass_here - movable_pigment_mass
+			# --- PART 1: compute my outflow and what stays at source ---
+			var water_at_source = water_read.get_pixel(x, y).r
+			var pigment_at_source = mobile_read.get_pixel(x, y)
+			var capacity_at_source = absorbency_map.get_pixel(x, y).r
+			var movable_water_at_source = max(0.0, water_at_source - capacity_at_source)
 
-				# 2. Calculate outflow as a fraction of ONLY the movable pigment
+			var displacement_here = displacement_map.get_pixel(x, y)
+			var outflow_right_wanted = max(0.0, displacement_here.r) * movable_water_at_source * delta
+			var outflow_left_wanted  = max(0.0, displacement_here.g) * movable_water_at_source * delta
+			var outflow_down_wanted  = max(0.0, displacement_here.b) * movable_water_at_source * delta
+			var outflow_up_wanted    = max(0.0, displacement_here.a) * movable_water_at_source * delta
+
+			var total_outflow_wanted = outflow_right_wanted + outflow_left_wanted + outflow_down_wanted + outflow_up_wanted
+			if total_outflow_wanted > movable_water_at_source and total_outflow_wanted > 0.0:
+				var scale_factor = movable_water_at_source / total_outflow_wanted
+				outflow_right_wanted *= scale_factor
+				outflow_left_wanted  *= scale_factor
+				outflow_down_wanted  *= scale_factor
+				outflow_up_wanted    *= scale_factor
+				total_outflow_wanted  = movable_water_at_source
+
+			var water_staying_at_source = water_at_source - total_outflow_wanted
+
+			# pigment partition (absorbed vs movable) and what stays after outflow
+			var mass_staying_at_source = 0.0
+			var pigment_mass_at_source = _alpha_to_mass(pigment_at_source.a)
+
+			if water_at_source > 1e-6 and pigment_mass_at_source > 0.0:
+				var movable_mass_fraction = movable_water_at_source / water_at_source
+				var movable_pigment_mass_at_source = pigment_mass_at_source * movable_mass_fraction
+				var absorbed_pigment_mass_at_source = pigment_mass_at_source - movable_pigment_mass_at_source
+
 				var outflow_fraction_of_movable = 0.0
-				if movable_water_here > 1e-6:
-					outflow_fraction_of_movable = total_outflow / movable_water_here
-				
-				var pigment_mass_that_flows_out = movable_pigment_mass * outflow_fraction_of_movable
-				
-				# 3. The total mass staying is the absorbed part plus the movable part that didn't flow.
-				mass_staying = (movable_pigment_mass - pigment_mass_that_flows_out) + absorbed_pigment_mass
+				if movable_water_at_source > 1e-6:
+					outflow_fraction_of_movable = total_outflow_wanted / movable_water_at_source
+
+				var pigment_mass_that_flows_out = movable_pigment_mass_at_source * outflow_fraction_of_movable
+				mass_staying_at_source = (movable_pigment_mass_at_source - pigment_mass_that_flows_out) + absorbed_pigment_mass_at_source
 			else:
-				# If no water or no pigment, all mass stays.
-				mass_staying = mass_here
-	
-			# The pigment color that stays behind
-			var pigment_staying = Color(pigment_here.r, pigment_here.g, pigment_here.b, _mass_to_alpha(mass_staying))
-			
-			# --- PART 2: GATHER INFLOW FROM ALL FOUR NEIGHBORS ---
+				mass_staying_at_source = pigment_mass_at_source
+
+			var pigment_staying_color = Color(
+				pigment_at_source.r,
+				pigment_at_source.g,
+				pigment_at_source.b,
+				_mass_to_alpha(mass_staying_at_source)
+			)
+
+			# --- PART 2: gather inflow from neighbors (use helper to get their final outflows) ---
 			var total_inflow_water = 0.0
-			var final_inflow_pigment = Color(1,1,1,0) # Accumulator for incoming pigment
+			var inflow_pigment_accum = Color(1, 1, 1, 0) # mass-preserving mix accumulator
 
-			# --- Inflow from LEFT neighbor (x-1, y) ---
+			# from LEFT neighbor -> their RIGHT outflow lands here
 			if x > 0:
-				var water_neighbor = water_read.get_pixel(x - 1, y).r
-				if water_neighbor > DRY_PIXEL_LIMIT:
-					# Calculate the outflow FROM the neighbor TOWARDS us
-					var capacity_neighbor = absorbency_map.get_pixel(x - 1, y).r
-					var movable_water_neighbor = max(0.0, water_neighbor - capacity_neighbor)
-					var F_neighbor = displacement_map.get_pixel(x - 1, y)
-					
-					# The neighbor's outflow to its RIGHT is our inflow from the LEFT
-					var water_in = max(0.0, F_neighbor.r) * movable_water_neighbor * delta
-					
-					# We must also scale this inflow just like we scaled the outflow
-					var total_outflow_neighbor = (max(0, F_neighbor.r) + max(0, F_neighbor.g) + max(0, F_neighbor.b) + max(0, F_neighbor.a)) * movable_water_neighbor * delta
-					if total_outflow_neighbor > movable_water_neighbor:
-						water_in *= (movable_water_neighbor / total_outflow_neighbor)
-					
-					total_inflow_water += water_in
-					
-					# Calculate the pigment that comes with this water
-					if water_in > 0.0 and water_neighbor > 1e-6:
-						var pigment_neighbor = mobile_read.get_pixel(x - 1, y)
-						var mass_neighbor = _alpha_to_mass(pigment_neighbor.a)
-						var mass_out = mass_neighbor * (water_in / water_neighbor)
-						var pigment_in = Color(pigment_neighbor.r, pigment_neighbor.g, pigment_neighbor.b, _mass_to_alpha(mass_out))
-						final_inflow_pigment = _mix_pigments_with_mass_conversion(final_inflow_pigment, pigment_in)
+				var neighbor_flows = _final_outflows_at(x - 1, y, delta)
+				var water_in_from_left = neighbor_flows.x
+				if water_in_from_left > 0.0:
+					total_inflow_water += water_in_from_left
 
+					var neighbor_water = water_read.get_pixel(x - 1, y).r
+					var neighbor_capacity = absorbency_map.get_pixel(x - 1, y).r
+					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
+					var neighbor_pigment = mobile_read.get_pixel(x - 1, y)
 
-			# --- Inflow from RIGHT neighbor (x+1, y) ---
+					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
+					var incoming_mass = neighbor_movable_mass * (water_in_from_left / max(neighbor_movable_water, 1e-6))
+
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
+
+			# from RIGHT neighbor -> their LEFT outflow lands here
 			if x < canvas_width - 1:
-				var water_neighbor = water_read.get_pixel(x + 1, y).r
-				if water_neighbor > DRY_PIXEL_LIMIT:
-					var capacity_neighbor = absorbency_map.get_pixel(x + 1, y).r
-					var movable_water_neighbor = max(0.0, water_neighbor - capacity_neighbor)
-					var F_neighbor = displacement_map.get_pixel(x + 1, y)
-					var water_in = max(0.0, F_neighbor.g) * movable_water_neighbor * delta # Neighbor's LEFT is our RIGHT
-					var total_outflow_neighbor = (max(0, F_neighbor.r) + max(0, F_neighbor.g) + max(0, F_neighbor.b) + max(0, F_neighbor.a)) * movable_water_neighbor * delta
-					if total_outflow_neighbor > movable_water_neighbor:
-						water_in *= (movable_water_neighbor / total_outflow_neighbor)
-					total_inflow_water += water_in
-					if water_in > 0.0 and water_neighbor > 1e-6:
-						var pigment_neighbor = mobile_read.get_pixel(x + 1, y)
-						var mass_neighbor = _alpha_to_mass(pigment_neighbor.a)
-						var mass_out = mass_neighbor * (water_in / water_neighbor)
-						var pigment_in = Color(pigment_neighbor.r, pigment_neighbor.g, pigment_neighbor.b, _mass_to_alpha(mass_out))
-						final_inflow_pigment = _mix_pigments_with_mass_conversion(final_inflow_pigment, pigment_in)
+				var neighbor_flows = _final_outflows_at(x + 1, y, delta)
+				var water_in_from_right = neighbor_flows.y
+				if water_in_from_right > 0.0:
+					total_inflow_water += water_in_from_right
 
-			# --- Inflow from UP neighbor (x, y-1) ---
+					var neighbor_water = water_read.get_pixel(x + 1, y).r
+					var neighbor_capacity = absorbency_map.get_pixel(x + 1, y).r
+					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
+					var neighbor_pigment = mobile_read.get_pixel(x + 1, y)
+
+					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
+					var incoming_mass = neighbor_movable_mass * (water_in_from_right / max(neighbor_movable_water, 1e-6))
+
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
+
+			# from UP neighbor -> their DOWN outflow lands here
 			if y > 0:
-				var water_neighbor = water_read.get_pixel(x, y - 1).r
-				if water_neighbor > DRY_PIXEL_LIMIT:
-					var capacity_neighbor = absorbency_map.get_pixel(x, y - 1).r
-					var movable_water_neighbor = max(0.0, water_neighbor - capacity_neighbor)
-					var F_neighbor = displacement_map.get_pixel(x, y - 1)
-					var water_in = max(0.0, F_neighbor.b) * movable_water_neighbor * delta # Neighbor's DOWN is our UP
-					var total_outflow_neighbor = (max(0, F_neighbor.r) + max(0, F_neighbor.g) + max(0, F_neighbor.b) + max(0, F_neighbor.a)) * movable_water_neighbor * delta
-					if total_outflow_neighbor > movable_water_neighbor:
-						water_in *= (movable_water_neighbor / total_outflow_neighbor)
-					total_inflow_water += water_in
-					if water_in > 0.0 and water_neighbor > 1e-6:
-						var pigment_neighbor = mobile_read.get_pixel(x, y - 1)
-						var mass_neighbor = _alpha_to_mass(pigment_neighbor.a)
-						var mass_out = mass_neighbor * (water_in / water_neighbor)
-						var pigment_in = Color(pigment_neighbor.r, pigment_neighbor.g, pigment_neighbor.b, _mass_to_alpha(mass_out))
-						final_inflow_pigment = _mix_pigments_with_mass_conversion(final_inflow_pigment, pigment_in)
+				var neighbor_flows = _final_outflows_at(x, y - 1, delta)
+				var water_in_from_up = neighbor_flows.z
+				if water_in_from_up > 0.0:
+					total_inflow_water += water_in_from_up
 
-			# --- Inflow from DOWN neighbor (x, y+1) ---
+					var neighbor_water = water_read.get_pixel(x, y - 1).r
+					var neighbor_capacity = absorbency_map.get_pixel(x, y - 1).r
+					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
+					var neighbor_pigment = mobile_read.get_pixel(x, y - 1)
+
+					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
+					var incoming_mass = neighbor_movable_mass * (water_in_from_up / max(neighbor_movable_water, 1e-6))
+
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
+
+			# from DOWN neighbor -> their UP outflow lands here
 			if y < canvas_height - 1:
-				var water_neighbor = water_read.get_pixel(x, y + 1).r
-				if water_neighbor > DRY_PIXEL_LIMIT:
-					var capacity_neighbor = absorbency_map.get_pixel(x, y + 1).r
-					var movable_water_neighbor = max(0.0, water_neighbor - capacity_neighbor)
-					var F_neighbor = displacement_map.get_pixel(x, y + 1)
-					var water_in = max(0.0, F_neighbor.a) * movable_water_neighbor * delta # Neighbor's UP is our DOWN
-					var total_outflow_neighbor = (max(0, F_neighbor.r) + max(0, F_neighbor.g) + max(0, F_neighbor.b) + max(0, F_neighbor.a)) * movable_water_neighbor * delta
-					if total_outflow_neighbor > movable_water_neighbor:
-						water_in *= (movable_water_neighbor / total_outflow_neighbor)
-					total_inflow_water += water_in
-					if water_in > 0.0 and water_neighbor > 1e-6:
-						var pigment_neighbor = mobile_read.get_pixel(x, y + 1)
-						var mass_neighbor = _alpha_to_mass(pigment_neighbor.a)
-						var mass_out = mass_neighbor * (water_in / water_neighbor)
-						var pigment_in = Color(pigment_neighbor.r, pigment_neighbor.g, pigment_neighbor.b, _mass_to_alpha(mass_out))
-						final_inflow_pigment = _mix_pigments_with_mass_conversion(final_inflow_pigment, pigment_in)
-			
-			
-			# --- PART 3: FINALIZE AND WRITE THE PIXEL'S NEW STATE ---
-			
-			# Add the water that stayed to the water that flowed in.
-			var final_water = water_staying + total_inflow_water
-			
-			# Mix the pigment that stayed with all the pigment that flowed in.
-			var final_pigment = _mix_pigments_with_mass_conversion(pigment_staying, final_inflow_pigment)
-			
-			# Write the final, calculated values to the write buffers for this pixel.
-			water_write.set_pixel(x, y, Color(final_water, 0, 0))
-			mobile_write.set_pixel(x, y, final_pigment)
+				var neighbor_flows = _final_outflows_at(x, y + 1, delta)
+				var water_in_from_down = neighbor_flows.w
+				if water_in_from_down > 0.0:
+					total_inflow_water += water_in_from_down
+
+					var neighbor_water = water_read.get_pixel(x, y + 1).r
+					var neighbor_capacity = absorbency_map.get_pixel(x, y + 1).r
+					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
+					var neighbor_pigment = mobile_read.get_pixel(x, y + 1)
+
+					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
+					var incoming_mass = neighbor_movable_mass * (water_in_from_down / max(neighbor_movable_water, 1e-6))
+
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
+
+			# --- PART 3: finalize this pixel ---
+			var final_water_at_pixel = water_staying_at_source + total_inflow_water
+			var final_pigment_at_pixel = _mix_pigments_with_mass_conversion(pigment_staying_color, inflow_pigment_accum)
+
+			water_write.set_pixel(x, y, Color(final_water_at_pixel, 0, 0))
+			mobile_write.set_pixel(x, y, final_pigment_at_pixel)
+
 
 # --- HELPER FUNCTIONS ---
 
@@ -801,6 +790,39 @@ func _mass_to_alpha(mass: float) -> float:
 	# Encode the abstract pigment mass into a visual alpha value for rendering.
 	if mass <= 0.0: return 0.0
 	return 1.0 - exp(-K_ABSORPTION * mass)
+
+# Computes a neighbor pixel's FINAL, SCALED directional outflows (right, left, down, up).
+# Returns a Vector4: (outflow_right, outflow_left, outflow_down, outflow_up).
+func _final_outflows_at(neighbor_x: int, neighbor_y: int, delta: float) -> Vector4:
+	if neighbor_x < 0 or neighbor_x >= canvas_width or neighbor_y < 0 or neighbor_y >= canvas_height:
+		return Vector4(0, 0, 0, 0)
+
+	var water_at_neighbor = water_read.get_pixel(neighbor_x, neighbor_y).r
+	if water_at_neighbor <= DRY_PIXEL_LIMIT:
+		return Vector4(0, 0, 0, 0)
+
+	var capacity_at_neighbor = absorbency_map.get_pixel(neighbor_x, neighbor_y).r
+	var movable_water_at_neighbor = max(0.0, water_at_neighbor - capacity_at_neighbor)
+	if movable_water_at_neighbor <= DRY_PIXEL_LIMIT:
+		return Vector4(0, 0, 0, 0)
+
+	var displacement_at_neighbor = displacement_map.get_pixel(neighbor_x, neighbor_y)
+
+	var outflow_right_wanted = max(0.0, displacement_at_neighbor.r) * movable_water_at_neighbor * delta
+	var outflow_left_wanted  = max(0.0, displacement_at_neighbor.g) * movable_water_at_neighbor * delta
+	var outflow_down_wanted  = max(0.0, displacement_at_neighbor.b) * movable_water_at_neighbor * delta
+	var outflow_up_wanted    = max(0.0, displacement_at_neighbor.a) * movable_water_at_neighbor * delta
+
+	var total_outflow_wanted = outflow_right_wanted + outflow_left_wanted + outflow_down_wanted + outflow_up_wanted
+	if total_outflow_wanted > movable_water_at_neighbor and total_outflow_wanted > 0.0:
+		var scale_factor = movable_water_at_neighbor / total_outflow_wanted
+		outflow_right_wanted *= scale_factor
+		outflow_left_wanted  *= scale_factor
+		outflow_down_wanted  *= scale_factor
+		outflow_up_wanted    *= scale_factor
+
+	return Vector4(outflow_right_wanted, outflow_left_wanted, outflow_down_wanted, outflow_up_wanted)
+
 
 
 # This function will handle the spreading of water and mobile pigment.
