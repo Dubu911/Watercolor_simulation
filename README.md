@@ -9,16 +9,27 @@ It is being developed using the [Godot Game Engine](https://godotengine.org/).
 - Web-ready performance
 
 ## Status
-Getting familiar with Godot engine.
-Implementing physics simulation for watercolor behavior in trial3
+
+Implementing the watercolor physics simulation in trial3.
 
 ## Next Steps
-- Refine watercolor physics simulation
-- Implement brush engine and UI tools
-- Implement various input range from brush(pressure, stroke speed)
+- Defusion and deposition in the physics siumulator
+-Support broader brush inputs (pressure, stroke speed)
+- Implement a velocity map to reduce oscillation in the water layer
+- Convert GPU-ready code into shaders to scale up canvas size
+- Add a whitening(lift) watercolor brush so user can undo the work
+- Expand pencil input range
+- Improve the UI, especially snapshot/history
+- Add load, save functionality
 - Optimize for web performance
 
 ## Trial Descriptions
 - **`trial1`**: Focused on learning the basics of the Godot engine.
 - **`trial2`**: Introduced a more robust data structure to support future expansion.
-- **`trial3`**: Improved data structure for faster simulation and easier feature expansion.
+- **`trial3`**: 
+- Improved data structure for faster simulation and easier feature expansion.
+- CPU implementation with GPU-friendly logic in place
+- Core physics algorithms in progress; currently working on deposition
+
+- **`trial4`**:
+- To do : Convert trial3 to shaders so it can scale up
