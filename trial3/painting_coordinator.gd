@@ -182,32 +182,12 @@ func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 					var existing_pigment_wash = mobile_read_buffer.get_pixel(draw_x, draw_y)
 					
 					# Use the new helper function to correctly mix the two washes
-					var final_mixed_color = _mix_washes(new_pigment_wash, existing_pigment_wash)
+					var final_mixed_color = PigmentMixer._mix_pigments_optical(new_pigment_wash, existing_pigment_wash)
 					
 					mobile_read_buffer.set_pixel(draw_x, draw_y, final_mixed_color)
-	
+
 	mark_watercolor_dirty()
 	
-# This function simulates adding a new wash to an existing wet area.
-func _mix_washes(new_wash: Color, existing_wash: Color) -> Color:
-	# If the existing area is dry, just use the new wash.
-	if existing_wash.a < 0.001:
-		return new_wash
-	# If the new wash is just water (no pigment), the color doesn't change, only water amount does (handled elsewhere).
-	if new_wash.a < 0.001:
-		return existing_wash
-
-	# Calculate the total concentration (alpha) of the new mixture.
-	var total_alpha = new_wash.a + existing_wash.a
-	var final_alpha = min(1.0, total_alpha) # Cap at 1.0
-
-	# Calculate the new color as a weighted average based on concentration.
-	var final_r = (new_wash.r * new_wash.a + existing_wash.r * existing_wash.a) / total_alpha
-	var final_g = (new_wash.g * new_wash.a + existing_wash.g * existing_wash.a) / total_alpha
-	var final_b = (new_wash.b * new_wash.a + existing_wash.b * existing_wash.a) / total_alpha
-	
-	return Color(final_r, final_g, final_b, final_alpha)
-
 
 func draw_line_on_pencil_layer(from_pos: Vector2, to_pos: Vector2, color: Color, radius: float):
 	if not is_instance_valid(pencil_image): return

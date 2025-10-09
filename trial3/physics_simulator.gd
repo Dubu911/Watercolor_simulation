@@ -78,8 +78,8 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	_simulate_evaporation(delta)
 	_swap_water_buffers()
 	
-	# step 2, diffusion in the mobile layer. This is independent from water movement, about pigment movement
-	#_simulate_diffusion(delta, water_img, mobile_img) # pigments in mobile_image diffusses
+	# step 2, diffusion in the static layer. This is independent from water movement, about pigment movement
+	#_simulate_diffusion(delta) # pigments in mstatic_image diffusses
 	
 	# step 3, water fluid simulation considering gravity, surface tension and spreading force
 	#_calculate_water_displacement(g_x, g_y)
@@ -92,7 +92,7 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	_apply_water_displacement_with_pigment_inflow(delta)
 
 	# step 5, the mobile layer pigment goes down to the static layer to set a concrete image.
-	# _simulate_deposition(delta, water_img, mobile_img, static_img) # mobile_image -> static_image
+	# _simulate_deposition(delta) # mobile_image -> static_image
 	
 	_swap_water_buffers()
 	_swap_mobile_buffers()	
@@ -116,7 +116,7 @@ func _swap_static_buffers():
 	static_write = temp_static
 
 
-# This function calculates force acting on water due to gravity, surface tention and spreading.
+# This function calculates force acting on water due to gravity, surface tention and spreading force.
 # This function is directly from David Small's paper.
 func _calculate_water_displacement(g_x: float, g_y: float):
 	# Acceleration in x direction
@@ -430,7 +430,7 @@ func _calculate_water_displacement_4_dir_redistribution(g_x: float, g_y: float):
 			# Store x,y directional force
 			displacement_map.set_pixel(x, y, Color(final_r, final_l, final_d, final_u))
 
-# Move the water based on the calculated forces.(outflow model)
+# Move the water according to calculated forces.(outflow model)
 func _apply_water_displacement(delta: float):
 	# copy the current state to the write buffer.
 	water_write.fill(Color(0,0,0,0))
@@ -511,7 +511,7 @@ func _apply_water_displacement(delta: float):
 			var current_val_at_source = water_write.get_pixel(x, y).r
 			water_write.set_pixel(x, y, Color(current_val_at_source + total_here - total_outflow, 0, 0))
 
-# This carries pigment with water
+# This carries pigments with water
 func _apply_water_displacement_with_pigment(delta: float):
 	# copy the current state to the write buffer.
 	water_write.fill(Color(0,0,0,0))
@@ -580,11 +580,11 @@ func _apply_water_displacement_with_pigment(delta: float):
 				fraction_outflow = total_outflow / current_water_here
 
 			var pigment_alpha = pigment_here.a
-			var pigment_mass = _alpha_to_mass(pigment_alpha)
+			var pigment_mass = PigmentMixer._alpha_to_mass(pigment_alpha)
 			var mass_movable = pigment_mass * fraction_outflow
 			var mass_staying = pigment_mass - mass_movable
 			
-			var pigment_staying = Color(pigment_here.r, pigment_here.g, pigment_here.b, _mass_to_alpha(mass_staying))
+			var pigment_staying = Color(pigment_here.r, pigment_here.g, pigment_here.b, PigmentMixer._mass_to_alpha(mass_staying))
 			_add_content(x, y, current_water_here - total_outflow, pigment_staying)
 			
 			# Distribute the content that MOVES to the neighbors
@@ -593,17 +593,18 @@ func _apply_water_displacement_with_pigment(delta: float):
 				# and pass the correct water amount (want_r, etc.)
 				if want_r > 0.0:
 					var mass_out = mass_movable * ( want_r / total_outflow)
-					_add_content(x + 1, y, want_r, Color(hue.r, hue.g, hue.b, _mass_to_alpha(mass_out)))
+					_add_content(x + 1, y, want_r, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
 				if want_l > 0.0:
 					var mass_out = mass_movable * (want_l / total_outflow)
-					_add_content(x - 1, y, want_l, Color(hue.r, hue.g, hue.b, _mass_to_alpha(mass_out)))
+					_add_content(x - 1, y, want_l, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
 				if want_d > 0.0:
 					var mass_out = mass_movable * (want_d / total_outflow)
-					_add_content(x, y + 1, want_d, Color(hue.r, hue.g, hue.b, _mass_to_alpha(mass_out)))
+					_add_content(x, y + 1, want_d, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
 				if want_u > 0.0:
 					var mass_out = mass_movable * (want_u / total_outflow)
-					_add_content(x, y - 1, want_u, Color(hue.r, hue.g, hue.b, _mass_to_alpha(mass_out)))
+					_add_content(x, y - 1, want_u, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
 
+# GPU implementation ready approach (still running on CPU)
 func _apply_water_displacement_with_pigment_inflow(delta: float):
 	water_write.fill(Color(0,0,0,0))
 	mobile_write.fill(Color(1,1,1,0))
@@ -635,7 +636,7 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 
 			# pigment partition (absorbed vs movable) and what stays after outflow
 			var mass_staying_at_source = 0.0
-			var pigment_mass_at_source = _alpha_to_mass(pigment_at_source.a)
+			var pigment_mass_at_source = PigmentMixer._alpha_to_mass(pigment_at_source.a)
 
 			if water_at_source > 1e-6 and pigment_mass_at_source > 0.0:
 				var movable_mass_fraction = movable_water_at_source / water_at_source
@@ -655,7 +656,7 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 				pigment_at_source.r,
 				pigment_at_source.g,
 				pigment_at_source.b,
-				_mass_to_alpha(mass_staying_at_source)
+				PigmentMixer._mass_to_alpha(mass_staying_at_source)
 			)
 
 			# --- PART 2: gather inflow from neighbors (use helper to get their final outflows) ---
@@ -674,13 +675,13 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
 					var neighbor_pigment = mobile_read.get_pixel(x - 1, y)
 
-					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_mass = PigmentMixer._alpha_to_mass(neighbor_pigment.a)
 					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
 					var incoming_mass = neighbor_movable_mass * (water_in_from_left / max(neighbor_movable_water, 1e-6))
 
-					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
 					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
-					inflow_pigment_accum = _mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
+					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
 					
 			# from RIGHT neighbor -> their LEFT outflow lands here
 			if x < canvas_width - 1:
@@ -694,13 +695,13 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
 					var neighbor_pigment = mobile_read.get_pixel(x + 1, y)
 
-					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_mass = PigmentMixer._alpha_to_mass(neighbor_pigment.a)
 					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
 					var incoming_mass = neighbor_movable_mass * (water_in_from_right / max(neighbor_movable_water, 1e-6))
 
-					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
 					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
-					inflow_pigment_accum = _mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
+					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
 
 			# from UP neighbor -> their DOWN outflow lands here
 			if y > 0:
@@ -714,13 +715,13 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
 					var neighbor_pigment = mobile_read.get_pixel(x, y - 1)
 
-					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_mass = PigmentMixer._alpha_to_mass(neighbor_pigment.a)
 					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
 					var incoming_mass = neighbor_movable_mass * (water_in_from_up / max(neighbor_movable_water, 1e-6))
 
-					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
 					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
-					inflow_pigment_accum = _mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
+					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
 
 			# from DOWN neighbor -> their UP outflow lands here
 			if y < canvas_height - 1:
@@ -734,17 +735,17 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var neighbor_movable_water = max(0.0, neighbor_water - neighbor_capacity)
 					var neighbor_pigment = mobile_read.get_pixel(x, y + 1)
 
-					var neighbor_mass = _alpha_to_mass(neighbor_pigment.a)
+					var neighbor_mass = PigmentMixer._alpha_to_mass(neighbor_pigment.a)
 					var neighbor_movable_mass = neighbor_mass * (neighbor_movable_water / max(neighbor_water, 1e-6))
 					var incoming_mass = neighbor_movable_mass * (water_in_from_down / max(neighbor_movable_water, 1e-6))
 
-					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, _mass_to_alpha(incoming_mass))
+					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
 					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
-					inflow_pigment_accum = _mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
+					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
 
 			# --- PART 3: finalize this pixel ---
 			var final_water_at_pixel = water_staying_at_source + total_inflow_water
-			var final_pigment_at_pixel = _mix_pigments_with_mass_conversion(pigment_staying_color, inflow_pigment_accum)
+			var final_pigment_at_pixel = PigmentMixer._mix_pigments_optical(pigment_staying_color, inflow_pigment_accum)
 
 			water_write.set_pixel(x, y, Color(final_water_at_pixel, 0, 0))
 			mobile_write.set_pixel(x, y, final_pigment_at_pixel)
@@ -761,72 +762,7 @@ func _add_content(x: int, y: int, water_amount: float, pigment_color: Color):
 	
 	# Add pigment
 	var incoming_pigment = mobile_write.get_pixel(x, y)
-	#mobile_write.set_pixel(x, y, _mix_pigments_subtractive(pigment_color, incoming_pigment))
-	mobile_write.set_pixel(x, y, _mix_pigments_with_mass_conversion(pigment_color, incoming_pigment))
-
-func _mix_pigments_with_mass_conversion(pigment1: Color, pigment2: Color) -> Color:
-	# decode masses
-	var mass1 = _alpha_to_mass(pigment1.a)
-	var mass2 = _alpha_to_mass(pigment2.a)
-
-	if mass1 <= 0.0: return pigment2
-	if mass2 <= 0.0: return pigment1
-
-	var M = mass1 + mass2
-	
-	# CMY fingerprints (each in [0,1])
-	var c1 = 1.0 - pigment1.r; var m1 = 1.0 - pigment1.g; var y1 = 1.0 - pigment1.b
-	var c2 = 1.0 - pigment2.r; var m2 = 1.0 - pigment2.g; var y2 = 1.0 - pigment2.b
-
-	# mass-weighted average CMY (stays in [0,1])
-	var c = (c1 * mass1 + c2 * mass2) / M
-	var m = (m1 * mass1 + m2 * mass2) / M
-	var y = (y1 * mass1 + y2 * mass2) / M
-
-	# back to RGB + encode mass to alpha for storage/display
-	return Color(1.0 - c, 1.0 - m, 1.0 - y, _mass_to_alpha(M))
-
-func _hue_to_optical_density(rgb: Color) -> Vector3:
-	# Interpret hue as per-channel transmittance; convert to optical density.
-	var r_t = clamp(rgb.r, EPS_A, 1.0)
-	var g_t = clamp(rgb.g, EPS_A, 1.0)
-	var b_t = clamp(rgb.b, EPS_A, 1.0)
-	return Vector3(-log(r_t), -log(g_t), -log(b_t))
-
-func _optical_density_to_rgb(od: Vector3) -> Color:
-	# Convert OD back to per-channel transmittance (RGB).
-	return Color(exp(-od.x), exp(-od.y), exp(-od.z), 1.0)
-
-# Optional knobs if you want: per-pigment tinting strength multipliers (default 1.0).
-func _mix_pigments_optical(pigment_a: Color, pigment_b: Color, tint_strength_a = 1.0, tint_strength_b = 1.0) -> Color:
-	var mass_a = _alpha_to_mass(pigment_a.a)
-	var mass_b = _alpha_to_mass(pigment_b.a)
-
-	if mass_a <= 0.0: return pigment_b
-	if mass_b <= 0.0: return pigment_a
-
-	var total_mass = mass_a + mass_b
-
-	# Optical density “fingerprints” from hues
-	var od_a = _hue_to_optical_density(pigment_a) * tint_strength_a
-	var od_b = _hue_to_optical_density(pigment_b) * tint_strength_b
-
-	# Mass-weighted OD (Beer–Lambert)
-	var od_total = (od_a * mass_a + od_b * mass_b) / total_mass
-
-	var rgb_total = _optical_density_to_rgb(od_total)
-	return Color(rgb_total.r, rgb_total.g, rgb_total.b, _mass_to_alpha(total_mass))
-
-
-func _alpha_to_mass(alpha: float) -> float:
-	# Decode the visual alpha back into an abstract pigment mass.
-	var a = clamp(alpha, 0.0, 1.0 - EPS_A)
-	return -log(1.0 - a) / K_ABSORPTION
-
-func _mass_to_alpha(mass: float) -> float:
-	# Encode the abstract pigment mass into a visual alpha value for rendering.
-	if mass <= 0.0: return 0.0
-	return 1.0 - exp(-K_ABSORPTION * mass)
+	mobile_write.set_pixel(x, y, PigmentMixer._mix_pigments_optical(pigment_color, incoming_pigment))
 
 # Computes a neighbor pixel's FINAL, SCALED directional outflows (right, left, down, up).
 # Returns a Vector4: (outflow_right, outflow_left, outflow_down, outflow_up).
