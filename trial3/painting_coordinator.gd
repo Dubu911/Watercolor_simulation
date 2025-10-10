@@ -9,6 +9,7 @@ const MAX_WATER_AMOUNT := 1.0
 @onready var physics_simulator = $physics_simulator
 
 # --- Node Path Managements ---
+@export var background_path: NodePath
 @export var water_layer_sprite_path: NodePath
 @export var mobile_layer_sprite_path: NodePath
 @export var static_layer_sprite_path: NodePath
@@ -16,12 +17,14 @@ const MAX_WATER_AMOUNT := 1.0
 @export var brush_manager_path: NodePath
 
 # --- Internal Layer Sprite References ---
+var background_sprite: Sprite2D
 var water_layer_sprite: Sprite2D
 var mobile_layer_sprite: Sprite2D
 var static_layer_sprite: Sprite2D
 var pencil_layer_sprite: Sprite2D
 
 # --- Image Data (The actual data for the simulation) ---
+var background_image: Image
 var water_read_buffer: Image
 var water_write_buffer: Image
 var mobile_read_buffer: Image
@@ -33,6 +36,7 @@ var absorbency_map : Image
 var displacement_map : Image
 
 # --- Textures (The GPU version of the data for display) ---
+var background_texture: ImageTexture
 var water_texture: ImageTexture
 var mobile_texture: ImageTexture
 var static_texture: ImageTexture
@@ -54,6 +58,11 @@ var gravity_y: float = 0.0
 
 func _ready():
 	# 1. Get Layer Sprite2D Nodes with more robust checks
+	background_sprite = get_node_or_null(background_path) as Sprite2D
+	if not background_sprite:
+		printerr("painting_coordinator ERROR: background_sprite not found! Check the NodePath in the Inspector.")
+		return
+	
 	water_layer_sprite = get_node_or_null(water_layer_sprite_path) as Sprite2D
 	if not water_layer_sprite:
 		printerr("painting_coordinator ERROR: Water_layer_sprite not found! Check the NodePath in the Inspector.")
@@ -75,6 +84,12 @@ func _ready():
 		return
 
 	# 2. Initialize Images & Textures
+	# background the "paper", starts white
+	background_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
+	background_image.fill(Color.WHITE)
+	background_texture = ImageTexture.create_from_image(background_image)
+	background_sprite.texture = background_texture
+
 	# Water layer uses a floating-point format for precision
 	water_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	water_texture = ImageTexture.create_from_image(water_read_buffer)
@@ -90,9 +105,9 @@ func _ready():
 	
 	mobile_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	
-	# Static layer is the "paper", starts white
+	# Static layer is the "paper", starts transparent
 	static_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	static_read_buffer.fill(Color.WHITE)
+	static_read_buffer.fill(Color(1, 1, 1, 0))
 	static_texture = ImageTexture.create_from_image(static_read_buffer)
 	static_layer_sprite.texture = static_texture
 	

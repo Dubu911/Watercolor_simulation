@@ -9,10 +9,13 @@ const EVAPORATION_CONST = 0.01
 @export var S: float = 0.10 # Surface tension coefficient
 @export var SP: float = 0.50 # Spread force coefficient
 @export var HOLD_THRESHOLD = 5.0 # The force needed to wet a dry pixel
+@export var k_deposit_base: float = 1.0  # overall deposition speed (0.3..3.0)
+@export var w_scale: float = 0.15        # water scale (≈ how much water feels “wet”); 0.05 .. 0.3
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
 const ENERGY_LOSS_ON_REDISTRIBUTION = 0.5 # How much energy is lost when flow is redirected
 const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
 const EPS_A = 1e-6 # avoid log(0)
+
 
 
 # --- MEMBER VARIABLES TO HOLD REFERENCES TO DATA LAYERS ---
@@ -78,24 +81,27 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	_simulate_evaporation(delta)
 	_swap_water_buffers()
 	
-	# step 2, diffusion in the static layer. This is independent from water movement, about pigment movement
+	# step 2, water fluid simulation considering gravity, surface tension and spreading force
+	#_calculate_water_displacement(g_x, g_y)
+	_calculate_water_displacement_4_directional(g_x, g_y)
+	#_calculate_water_displacement_4_dir_redistribution(g_x, g_y)
+	
+	# step 3, execute water movement based on step 3 information as well as pigment carried with the water.
+	#_apply_water_displacement(delta)
+	_apply_water_displacement_with_pigment(delta)
+	#_apply_water_displacement_with_pigment_inflow(delta)
+
+	_swap_water_buffers()
+	_swap_mobile_buffers()
+	
+	# step 4, the mobile layer pigment goes down to the static layer to set a concrete image.
+	_simulate_deposition(delta) # mobile_image -> static_image
+	
+	# step 5, diffusion in the static layer. This is independent from water movement, about pigment movement
 	#_simulate_diffusion(delta) # pigments in mstatic_image diffusses
 	
-	# step 3, water fluid simulation considering gravity, surface tension and spreading force
-	#_calculate_water_displacement(g_x, g_y)
-	#_calculate_water_displacement_4_directional(g_x, g_y)
-	_calculate_water_displacement_4_dir_redistribution(g_x, g_y)
-	
-	# step 4, execute water movement based on step 3 information as well as pigment carried with the water.
-	#_apply_water_displacement(delta)
-	#_apply_water_displacement_with_pigment(delta)
-	_apply_water_displacement_with_pigment_inflow(delta)
-
-	# step 5, the mobile layer pigment goes down to the static layer to set a concrete image.
-	# _simulate_deposition(delta) # mobile_image -> static_image
-	
-	_swap_water_buffers()
-	_swap_mobile_buffers()	
+	_swap_mobile_buffers()
+	_swap_static_buffers()	
 	
 
 # --- PRIVATE SIMULATION FUNCTIONS ---
@@ -797,14 +803,6 @@ func _final_outflows_at(neighbor_x: int, neighbor_y: int, delta: float) -> Vecto
 	return Vector4(outflow_right_wanted, outflow_left_wanted, outflow_down_wanted, outflow_up_wanted)
 
 
-
-# This function will handle the spreading of water and mobile pigment.
-func _simulate_diffusion(delta: float, water: Image, mobile_pigment: Image):
-	# TODO: Implement the diffusion logic here.
-	# This will involve looping through each pixel and its neighbors.
-	pass
-
-
 # This function will handle water evaporating from the canvas over time.
 func _simulate_evaporation(delta: float):
 	for y in range(canvas_height):
@@ -832,8 +830,64 @@ func _simulate_evaporation(delta: float):
 
 
 # This function will handle wet pigment getting "stuck" to the paper and becoming dry.
-func _simulate_deposition(delta: float, water: Image, mobile_pigment: Image, static_pigment: Image):
-	# TODO: Implement deposition logic here.
-	# This will move color from the mobile_pigment Image to the static_pigment Image.
+func _simulate_deposition(delta: float) -> void:
+	# --- start from current buffers ---
+	mobile_write.blit_rect(mobile_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
+	static_write.blit_rect(static_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
+
+	for y in range(canvas_height):
+		for x in range(canvas_width):
+			var water_here = water_read.get_pixel(x, y).r
+			var absorbency = absorbency_map.get_pixel(x, y).r
+
+			var mobile_color = mobile_read.get_pixel(x, y)
+			var mobile_mass = PigmentMixer._alpha_to_mass(mobile_color.a)
+			if mobile_mass <= 0.0:
+				continue  # nothing to deposit here
+
+			# If essentially dry, lock everything immediately (snap to paper).
+			if water_here < DRY_PIXEL_LIMIT:
+				var hue = Color(mobile_color.r, mobile_color.g, mobile_color.b, 1.0)
+				var deposit_color = Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mobile_mass))
+				var static_here = static_read.get_pixel(x, y)
+				static_write.set_pixel(x, y, PigmentMixer._mix_pigments_optical(deposit_color, static_here))
+
+				# Clear mobile at this pixel (all mass moved).
+				mobile_write.set_pixel(x, y, Color(1, 1, 1, 0.0))
+				continue
+
+			# --- Wet deposition (rate depends on water + absorbency) ---
+			var water_factor = w_scale / (water_here + w_scale)
+			var rate = k_deposit_base * max(0.0, absorbency) * water_factor
+
+			var deposit_fraction = 1.0 - exp(-rate * delta)
+			deposit_fraction = clamp(deposit_fraction, 0.0, 1.0)
+
+			var deposit_mass = mobile_mass * deposit_fraction
+			if deposit_mass <= 0.0:
+				# Nothing significant moves; mobile already copied above, static already copied above.
+				# Keep mobile as-is at this pixel for this frame:
+				mobile_write.set_pixel(x, y, mobile_color)
+				continue
+
+			var remaining_mass = max(0.0, mobile_mass - deposit_mass) # clamp to avoid -0.0
+
+			# Preserve hue: move mass with the same RGB “fingerprint”.
+			var hue = Color(mobile_color.r, mobile_color.g, mobile_color.b, 1.0)
+			var deposit_color = Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(deposit_mass))
+			var remaining_color = Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(remaining_mass))
+
+			# Add to static using optical mixing (mass-aware), and write back mobile remainder.
+			var static_here = static_read.get_pixel(x, y)
+			static_write.set_pixel(x, y, PigmentMixer._mix_pigments_optical(deposit_color, static_here))
+			mobile_write.set_pixel(x, y, remaining_color)
+
+
+
+# This function will handle the spreading of water and mobile pigment.
+func _simulate_diffusion(delta: float, water: Image, mobile_pigment: Image):
+	# TODO: Implement the diffusion logic here.
+	# This will involve looping through each pixel and its neighbors.
 	pass
+
 	

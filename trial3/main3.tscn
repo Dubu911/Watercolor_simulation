@@ -28,6 +28,9 @@ script = ExtResource("1_bp1uf")
 
 [node name="layers_container" type="Node2D" parent="."]
 
+[node name="background" type="Sprite2D" parent="layers_container"]
+centered = false
+
 [node name="static_layer" type="Sprite2D" parent="layers_container"]
 
 [node name="mobile_layer" type="Sprite2D" parent="layers_container"]
@@ -62,6 +65,7 @@ script = ExtResource("3_1yvx1")
 
 [node name="painting_coordinator" type="Node" parent="."]
 script = ExtResource("5_kn0cr")
+background_path = NodePath("../layers_container/background")
 water_layer_sprite_path = NodePath("../layers_container/water_layer")
 mobile_layer_sprite_path = NodePath("../layers_container/mobile_layer")
 static_layer_sprite_path = NodePath("../layers_container/static_layer")
