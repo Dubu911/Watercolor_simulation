@@ -10,7 +10,7 @@ const EVAPORATION_CONST = 0.01
 @export var SP: float = 0.50 # Spread force coefficient
 @export var HOLD_THRESHOLD = 5.0 # The force needed to wet a dry pixel
 @export var k_deposit_base: float = 1.0  # overall deposition speed (0.3..3.0)
-@export var w_scale: float = 0.15        # water scale (≈ how much water feels “wet”); 0.05 .. 0.3
+@export var w_scale: float = 0.2        # water scale (≈ how much water feels “wet”); 0.05 .. 0.3
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
 const ENERGY_LOSS_ON_REDISTRIBUTION = 0.5 # How much energy is lost when flow is redirected
 const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
@@ -867,7 +867,7 @@ func _simulate_deposition(delta: float) -> void:
 			if deposit_mass <= 0.0:
 				# Nothing significant moves; mobile already copied above, static already copied above.
 				# Keep mobile as-is at this pixel for this frame:
-				mobile_write.set_pixel(x, y, mobile_color)
+				#mobile_write.set_pixel(x, y, mobile_color)
 				continue
 
 			var remaining_mass = max(0.0, mobile_mass - deposit_mass) # clamp to avoid -0.0
