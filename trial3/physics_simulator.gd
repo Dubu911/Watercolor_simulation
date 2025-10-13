@@ -867,7 +867,6 @@ func _simulate_deposition(delta: float) -> void:
 			if deposit_mass <= 0.0:
 				# Nothing significant moves; mobile already copied above, static already copied above.
 				# Keep mobile as-is at this pixel for this frame:
-				#mobile_write.set_pixel(x, y, mobile_color)
 				continue
 
 			var remaining_mass = max(0.0, mobile_mass - deposit_mass) # clamp to avoid -0.0
