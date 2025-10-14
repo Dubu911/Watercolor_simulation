@@ -8,9 +8,7 @@ extends Node
 @export var eraser_brush_path: NodePath
 @export var layer_for_mouse_pos_path: NodePath
 @export var current_color_display_path: NodePath
-@export var magenta_button_path: NodePath
-@export var cyan_button_path: NodePath
-@export var yellow_button_path: NodePath
+@export var color_picker_path: NodePath
 
 # --- Internal References to PathNode ---
 var painting_coordinator: Node
@@ -19,21 +17,13 @@ var pencil_brush: Node
 var eraser_brush: Node
 var layer_for_mouse_pos: Sprite2D
 var current_color_display: ColorRect
-var magenta_button: Button
-var cyan_button: Button
-var yellow_button: Button
+var color_picker: ColorPicker
 
 # --- Current Brush State ---
-var current_pigment_color: Color = Color.GRAY 
-var current_water_amount: float = 0.1 # Default value
-
-# A dictionary to store the state of each pigment.
-# The key is the pure color, the value is another dictionary holding its state.
-var pigment_states = {
-	Color(1.0, 0.0, 1.0, 1.0): {"selected": false, "alpha": 0.5, "button_node": null}, # Magenta
-	Color(0.0, 1.0, 1.0, 1.0): {"selected": false, "alpha": 0.5, "button_node": null}, # Cyan
-	Color(1.0, 1.0, 0.0, 1.0): {"selected": false, "alpha": 0.5, "button_node": null}  # Yellow
-}
+var current_hue: Color = Color.RED  # Base hue (RGB only, alpha ignored)
+var current_pigment_alpha: float = 0.5  # Pigment concentration (0.0 - 1.0)
+var current_pigment_color: Color = Color(1.0, 0.0, 0.0, 0.5)  # Final color with alpha
+var current_water_amount: float = 0.1  # Water amount
 
 
 func _ready():
@@ -54,41 +44,30 @@ func _ready():
 	eraser_brush = get_node_or_null(eraser_brush_path)
 	if not eraser_brush:
 		printerr("brush_manager ERROR: eraser_brush not found! Check the NodePath.")
-		
+
 	layer_for_mouse_pos = get_node_or_null(layer_for_mouse_pos_path) as Sprite2D
 	if not layer_for_mouse_pos:
 		printerr("BrushManager ERROR: LayerForMousePos not found! Assign a Sprite2D in the Inspector.")
 		return
 
 	current_color_display = get_node_or_null(current_color_display_path) as ColorRect
-	if not current_color_display: 
+	if not current_color_display:
 		printerr("BrushManager ERROR: CurrentColorDisplay not found!")
 		return
-	
-	magenta_button = get_node_or_null(magenta_button_path) as Button
-	if not magenta_button: 
-		printerr("BrushManager ERROR: magenta_button not found!")
+
+	color_picker = get_node_or_null(color_picker_path) as ColorPicker
+	if not color_picker:
+		printerr("BrushManager ERROR: ColorPicker not found!")
 		return
-	pigment_states[Color(1.0, 0.0, 1.0, 1.0)].button_node = magenta_button
-		
-	cyan_button = get_node_or_null(cyan_button_path) as Button
-	if not cyan_button: 
-		printerr("BrushManager ERROR: cyan_button not found!")
-		return
-	pigment_states[Color(0.0, 1.0, 1.0, 1.0)].button_node = cyan_button
-		
-	yellow_button = get_node_or_null(yellow_button_path) as Button
-	if not yellow_button: 
-		printerr("BrushManager ERROR: yellow_button not found!")
-		return
-	pigment_states[Color(1.0, 1.0, 0.0, 1.0)].button_node = yellow_button
+
+	# Note: color_changed signal is connected in the scene file (main3.tscn)
+
 	# Set the initial brush and update its properties
 	if watercolor_brush:
 		_set_active_brush(watercolor_brush)
-	
+
 	# Initialize the UI on start
-	_update_all_button_visuals()
-	_mix_and_update_all()
+	_update_color_display()
 
 func _unhandled_input(event: InputEvent):
 	# Get the currently active brush from the coordinator
@@ -108,30 +87,14 @@ func _unhandled_input(event: InputEvent):
 	if active_brush_node.has_method("handle_input"):
 		active_brush_node.handle_input(event, mouse_pos_in_image_space)
 
-# This function calculates the final mixed color and updates both the brush and the UI
-# --- The core logic for calculating the final brush color ---
-func _mix_and_update_all():
-	var final_rgb_color = Color.WHITE
-	var pigments_in_mix = 0
-	for pigment_hue in pigment_states:
-		var state = pigment_states[pigment_hue]
-		if state.selected:
-			final_rgb_color.r *= pigment_hue.r
-			final_rgb_color.g *= pigment_hue.g
-			final_rgb_color.b *= pigment_hue.b
-			pigments_in_mix += 1
-	
-	if pigments_in_mix == 0: final_rgb_color = Color.BLACK 
-
-	var final_alpha_color = Color(1, 1, 1, 0)
-	for pigment_hue in pigment_states:
-		var state = pigment_states[pigment_hue]
-		if state.selected:
-			var current_pigment = Color(pigment_hue.r, pigment_hue.g, pigment_hue.b, state.alpha)
-			final_alpha_color = _layer_colors(current_pigment, final_alpha_color)
-			
-	current_pigment_color = Color(final_rgb_color.r, final_rgb_color.g, final_rgb_color.b, final_alpha_color.a)
+# Updates the final pigment color based on hue and alpha
+func _update_pigment_color():
+	# Combine the hue (RGB) with pigment concentration (alpha)
+	current_pigment_color = Color(current_hue.r, current_hue.g, current_hue.b, current_pigment_alpha)
 	_update_active_brush_properties()
+	_update_color_display()
+
+func _update_color_display():
 	if is_instance_valid(current_color_display):
 		current_color_display.color = current_pigment_color
 
@@ -160,48 +123,9 @@ func _update_active_brush_properties():
 	if active_brush == watercolor_brush:
 		active_brush.set_active_color(current_pigment_color)
 		active_brush.set_water_amount(current_water_amount)
-
-func _update_all_button_visuals():
-	for pigment_hue in pigment_states:
-		_update_button_visual(pigment_hue)
-
-func _update_button_visual(hue: Color):
-	var state = pigment_states[hue]
-	var button = state.button_node # Corrected from "botten_node"
-	if not is_instance_valid(button): return
-	
-	var alpha = state.alpha
-	var display_color = Color(hue.r, hue.g, hue.b, alpha)
-	
-	var normal_stylebox = StyleBoxFlat.new()
-	normal_stylebox.bg_color = display_color
-	normal_stylebox.border_width_left = 2
-	normal_stylebox.border_width_right = 2
-	normal_stylebox.border_width_top = 2
-	normal_stylebox.border_width_bottom = 2
-	normal_stylebox.border_color = Color(0.3, 0.3, 0.3, 0.8)
-	
-	var pressed_stylebox = normal_stylebox.duplicate()
-	pressed_stylebox.border_color = Color(1, 1, 0.8, 1)
-	pressed_stylebox.border_width_left = 4
-	pressed_stylebox.border_width_right = 4
-	pressed_stylebox.border_width_top = 4
-	pressed_stylebox.border_width_bottom = 4
-
-	button.add_theme_stylebox_override("normal", normal_stylebox)
-	button.add_theme_stylebox_override("pressed", pressed_stylebox)
-
-# Helper functions
-func _layer_colors(source_color: Color, dest_color: Color) -> Color:
-	var out_a = source_color.a + dest_color.a * (1.0 - source_color.a)
-	if out_a < 0.0001: return Color(1, 1, 1, 0)
-	var out_r = (source_color.r * source_color.a + dest_color.r * dest_color.a * (1.0 - source_color.a)) / out_a
-	var out_g = (source_color.g * source_color.a + dest_color.g * dest_color.a * (1.0 - source_color.a)) / out_a
-	var out_b = (source_color.b * source_color.a + dest_color.b * dest_color.a * (1.0 - source_color.a)) / out_a
-	return Color(out_r, out_g, out_b, out_a)
 	
 # --- UI Signal Receivers ---
-# Connect the 'pressed' signal from your UI Buttons to these functions.
+# Connect these signals from your UI controls
 
 func _on_watercolor_button_pressed():
 	if watercolor_brush:
@@ -218,45 +142,21 @@ func _on_eraser_button_pressed():
 		print("brush_manager: Eraser Brush selected")
 		_set_active_brush(eraser_brush)
 
-func _on_magenta_button_toggled(is_on: bool):
-	var magenta_hue = Color(1.0, 0.0, 1.0)
-	pigment_states[magenta_hue].selected = is_on
-	_update_button_visual(magenta_hue)
-	_mix_and_update_all()
+# Called when the color picker color changes
+func _on_color_picker_changed(new_color: Color):
+	# Extract just the RGB (hue), ignore alpha from color picker
+	current_hue = Color(new_color.r, new_color.g, new_color.b, 1.0)
+	_update_pigment_color()
+	print("Color changed to: ", current_hue)
 
-func _on_cyan_button_toggled(is_on: bool):
-	var cyan_hue = Color(0.0, 1.0, 1.0)
-	pigment_states[cyan_hue].selected = is_on
-	_update_button_visual(cyan_hue)
-	_mix_and_update_all()
+# Called when pigment concentration (alpha) slider changes
+func _on_pigment_alpha_slider_changed(value: float):
+	current_pigment_alpha = value
+	_update_pigment_color()
+	print("Pigment concentration: ", value)
 
-func _on_yellow_button_toggled(is_on: bool):
-	var yellow_hue = Color(1.0, 1.0, 0.0)
-	pigment_states[yellow_hue].selected = is_on
-	_update_button_visual(yellow_hue)
-	_mix_and_update_all()
-
-func _on_magenta_alpha_slider_changed(value: float):
-	var magenta_hue = Color(1.0, 0.0, 1.0)
-	pigment_states[magenta_hue].alpha = value
-	_update_button_visual(magenta_hue)
-	_mix_and_update_all()
-
-func _on_cyan_alpha_slider_changed(value: float):
-	var cyan_hue = Color(0.0, 1.0, 1.0)
-	pigment_states[cyan_hue].alpha = value
-	_update_button_visual(cyan_hue)
-	_mix_and_update_all()
-
-func _on_yellow_alpha_slider_changed(value: float):
-	var yellow_hue = Color(1.0, 1.0, 0.0)
-	pigment_states[yellow_hue].alpha = value
-	_update_button_visual(yellow_hue)
-	_mix_and_update_all()
-
+# Called when water amount slider changes
 func _on_water_slider_value_changed(value: float):
-	# The slider's value is from 0 to 1
 	current_water_amount = value
-	_mix_and_update_all()
-	print("Current water amount : ", value)
 	_update_active_brush_properties()
+	print("Water amount: ", value)

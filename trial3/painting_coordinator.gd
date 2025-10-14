@@ -236,7 +236,7 @@ func _draw_dot(img: Image, center_pos: Vector2, color: Color, radius: float):
 
 
 # Input handling.
-func _unhandled_input(event: InputEvent):
+func _unhandled_input(_event: InputEvent):
 	var angle_change_speed = 1.0 # How fast the angle changes when a key is held
 	var needs_update = false
 

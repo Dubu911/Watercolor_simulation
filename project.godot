@@ -21,7 +21,8 @@ PigmentMixer="*res://trial3/pigment_mixer.gd"
 
 [display]
 
-window/size/viewport_width=1024
+window/size/viewport_width=2024
+window/size/viewport_height=1024
 
 [input]
 
