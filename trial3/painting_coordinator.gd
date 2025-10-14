@@ -177,7 +177,29 @@ func _process(_delta: float):
 		_dirty_pencil = false
 
 
-# This is the function that watercolor brush will now call.
+# Paint a single pixel with watercolor (optical mixing + water limiting)
+# Called by watercolor_brush for each pixel in a stroke
+func paint_watercolor_pixel(x: int, y: int, color: Color, water: float):
+	# Bounds check
+	if x < 0 or x >= CANVAS_WIDTH or y < 0 or y >= CANVAS_HEIGHT:
+		return
+
+	# Get current canvas state
+	var canvas_color = mobile_read_buffer.get_pixel(x, y)
+	var canvas_water = water_read_buffer.get_pixel(x, y).r
+
+	# Mix pigment using optical mixing (supports glazing technique)
+	var mixed_color = PigmentMixer._mix_pigments_optical(color, canvas_color)
+	mobile_read_buffer.set_pixel(x, y, mixed_color)
+
+	# Limit water - only add up to the brush's water amount
+	var water_to_add = max(0.0, water - canvas_water)
+	var new_water = canvas_water + water_to_add
+	water_read_buffer.set_pixel(x, y, Color(new_water, 0, 0))
+
+	mark_watercolor_dirty()
+
+# LEGACY: Old multi-dab function (can be removed after testing new brush)
 func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 	var i_radius = int(size)
 	for y_offset in range(-i_radius, i_radius + 1):

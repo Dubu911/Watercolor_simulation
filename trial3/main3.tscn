@@ -39,6 +39,8 @@ eraser_brush_path = NodePath("eraser_brush")
 layer_for_mouse_pos_path = NodePath("../layers_container/mobile_layer")
 current_color_display_path = NodePath("../CanvasLayer/color_swatch/current_color_display")
 color_picker_path = NodePath("../CanvasLayer/color_picker")
+brush_size_popup_path = NodePath("../CanvasLayer/brush_size_popup")
+brush_size_value_label_path = NodePath("../CanvasLayer/brush_size_popup/brush_size_control/size_value_label")
 
 [node name="watercolor_brush" type="Node" parent="brush_manager"]
 script = ExtResource("2_shnf3")
@@ -159,9 +161,38 @@ layout_mode = 0
 offset_right = 70.0
 offset_bottom = 70.0
 
+[node name="brush_size_popup" type="PanelContainer" parent="CanvasLayer"]
+visible = false
+offset_left = 1611.0
+offset_top = 769.0
+offset_right = 1904.0
+offset_bottom = 848.0
+
+[node name="brush_size_control" type="VBoxContainer" parent="CanvasLayer/brush_size_popup"]
+layout_mode = 2
+
+[node name="title_label" type="Label" parent="CanvasLayer/brush_size_popup/brush_size_control"]
+layout_mode = 2
+text = "Brush Size"
+horizontal_alignment = 1
+
+[node name="brush_size_slider" type="HSlider" parent="CanvasLayer/brush_size_popup/brush_size_control"]
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+min_value = 0.5
+max_value = 6.4
+step = 0.1
+value = 2.0
+
+[node name="size_value_label" type="Label" parent="CanvasLayer/brush_size_popup/brush_size_control"]
+layout_mode = 2
+text = "2.0"
+horizontal_alignment = 1
+
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/watercolor_button" to="brush_manager" method="_on_watercolor_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/pencil_button" to="brush_manager" method="_on_pencil_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/eraser_button" to="brush_manager" method="_on_eraser_button_pressed"]
 [connection signal="color_changed" from="CanvasLayer/color_picker" to="brush_manager" method="_on_color_picker_changed"]
 [connection signal="value_changed" from="CanvasLayer/pigment_control/pigment_alpha_slider" to="brush_manager" method="_on_pigment_alpha_slider_changed"]
 [connection signal="value_changed" from="CanvasLayer/water_control/water_slider" to="brush_manager" method="_on_water_slider_value_changed"]
+[connection signal="value_changed" from="CanvasLayer/brush_size_popup/brush_size_control/brush_size_slider" to="brush_manager" method="_on_brush_size_slider_changed"]

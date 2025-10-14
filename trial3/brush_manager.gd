@@ -9,6 +9,8 @@ extends Node
 @export var layer_for_mouse_pos_path: NodePath
 @export var current_color_display_path: NodePath
 @export var color_picker_path: NodePath
+@export var brush_size_popup_path: NodePath
+@export var brush_size_value_label_path: NodePath
 
 # --- Internal References to PathNode ---
 var painting_coordinator: Node
@@ -18,6 +20,8 @@ var eraser_brush: Node
 var layer_for_mouse_pos: Sprite2D
 var current_color_display: ColorRect
 var color_picker: ColorPicker
+var brush_size_popup: PanelContainer
+var brush_size_value_label: Label
 
 # --- Current Brush State ---
 var current_hue: Color = Color.RED  # Base hue (RGB only, alpha ignored)
@@ -60,7 +64,15 @@ func _ready():
 		printerr("BrushManager ERROR: ColorPicker not found!")
 		return
 
-	# Note: color_changed signal is connected in the scene file (main3.tscn)
+	brush_size_popup = get_node_or_null(brush_size_popup_path) as PanelContainer
+	if not brush_size_popup:
+		printerr("BrushManager ERROR: BrushSizePopup not found!")
+
+	brush_size_value_label = get_node_or_null(brush_size_value_label_path) as Label
+	if not brush_size_value_label:
+		printerr("BrushManager ERROR: BrushSizeValueLabel not found!")
+
+	# Note: Signals are connected in the scene file (main3.tscn)
 
 	# Set the initial brush and update its properties
 	if watercolor_brush:
@@ -132,6 +144,10 @@ func _on_watercolor_button_pressed():
 		print("brush_manager: Watercolor Brush selected")
 		_set_active_brush(watercolor_brush)
 
+		# Toggle brush size popup
+		if is_instance_valid(brush_size_popup):
+			brush_size_popup.visible = not brush_size_popup.visible
+
 func _on_pencil_button_pressed():
 	if pencil_brush:
 		print("brush_manager: Pencil Brush selected")
@@ -160,3 +176,14 @@ func _on_water_slider_value_changed(value: float):
 	current_water_amount = value
 	_update_active_brush_properties()
 	print("Water amount: ", value)
+
+# Called when brush size slider changes
+func _on_brush_size_slider_changed(value: float):
+	if is_instance_valid(watercolor_brush):
+		watercolor_brush.base_brush_size = value
+
+		# Update the label to show current size
+		if is_instance_valid(brush_size_value_label):
+			brush_size_value_label.text = "%.1f" % value
+
+		print("Brush size: ", value)
