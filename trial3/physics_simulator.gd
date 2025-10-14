@@ -2,12 +2,10 @@
 extends Node
 
 # --- SIMULATION CONSTANTS ---
-@export var DIFFUSION_RATE: float = 0.1  # pigment diffusion speed (0.01 .. 0.5)
-@export var EVAPORATION_CONST: float = 0.01  # water evaporation rate (0.001 .. 0.05)
-#const S = 0.5 # Surface tension coefficient
-#const SP = 1.3 # Spread force coefficient
 @export var S: float = 0.10 # Surface tension coefficient
 @export var SP: float = 0.50 # Spread force coefficient
+@export var DIFFUSION_RATE: float = 0.1  # pigment diffusion speed (0.01 .. 0.5)
+@export var EVAPORATION_CONST: float = 0.01  # water evaporation rate (0.001 .. 0.05)
 @export var HOLD_THRESHOLD: float = 5.0 # The force needed to wet a dry pixel
 @export var k_deposit_base: float = 1.0  # overall deposition speed (0.3..3.0)
 @export var w_scale: float = 0.2        # water scale (≈ how much water feels "wet"); 0.05 .. 0.3
