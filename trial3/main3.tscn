@@ -17,6 +17,16 @@ script = ExtResource("1_bp1uf")
 
 [node name="layers_container" type="Node2D" parent="."]
 
+[node name="brush_cursor_outer" type="Sprite2D" parent="layers_container"]
+visible = false
+modulate = Color(1, 1, 1, 0.3)
+z_index = 100
+
+[node name="brush_cursor_inner" type="Sprite2D" parent="layers_container"]
+visible = false
+modulate = Color(1, 1, 1, 0.6)
+z_index = 101
+
 [node name="background" type="Sprite2D" parent="layers_container"]
 centered = false
 

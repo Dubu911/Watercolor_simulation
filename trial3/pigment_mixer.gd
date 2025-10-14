@@ -1,6 +1,9 @@
 extends Node
 
-const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
+# Controls paint opacity and glazing behavior
+# Lower = more transparent, less darkening when layering (0.2-0.4 for lighter glazing)
+# Higher = more opaque, faster darkening when layering (0.5-1.0 for traditional watercolor)
+const K_ABSORPTION = 0.01
 const EPS_A = 1e-6 # avoid log(0)
 
 # --- HELPER FUNCTIONS ---
