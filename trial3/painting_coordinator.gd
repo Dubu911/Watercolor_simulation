@@ -179,7 +179,9 @@ func _process(_delta: float):
 
 # Paint a single pixel with watercolor (optical mixing + water limiting)
 # Called by watercolor_brush for each pixel in a stroke
-func paint_watercolor_pixel(x: int, y: int, color: Color, water: float):
+# Pigment transfer is now proportional to water transfer
+# Pressure allows concentrated pigment to diffuse into wet surfaces (wet-on-wet technique)
+func paint_watercolor_pixel(x: int, y: int, color: Color, water: float, pressure: float = 1.0):
 	# Bounds check
 	if x < 0 or x >= CANVAS_WIDTH or y < 0 or y >= CANVAS_HEIGHT:
 		return
@@ -188,14 +190,55 @@ func paint_watercolor_pixel(x: int, y: int, color: Color, water: float):
 	var canvas_color = mobile_read_buffer.get_pixel(x, y)
 	var canvas_water = water_read_buffer.get_pixel(x, y).r
 
-	# Mix pigment using optical mixing (supports glazing technique)
-	var mixed_color = PigmentMixer._mix_pigments_optical(color, canvas_color)
-	mobile_read_buffer.set_pixel(x, y, mixed_color)
-
-	# Limit water - only add up to the brush's water amount
+	# Calculate actual water transfer
+	# Only add water up to the brush's water amount (prevents over-saturation)
 	var water_to_add = max(0.0, water - canvas_water)
 	var new_water = canvas_water + water_to_add
 	water_read_buffer.set_pixel(x, y, Color(new_water, 0, 0))
+
+	# Calculate pigment transfer ratio based on actual water transfer
+	# If water_to_add is 0 (surface already wet), no pigment transfer via water
+	# If water_to_add equals water (dry surface), full pigment transfer
+	var pigment_transfer_ratio = water_to_add / water if water > 0.0 else 0.0
+
+	# Scale the incoming pigment by the water transfer ratio
+	var transferred_pigment = Color(color.r, color.g, color.b, color.a * pigment_transfer_ratio)
+
+	# --- WET-ON-WET TECHNIQUE: Pressure-based pigment diffusion ---
+	# When surface is wet and brush has concentrated pigment, allow diffusion based on:
+	# 1. Concentration difference (brush pigment vs canvas pigment)
+	# 2. Applied pressure (harder press = more pigment forced into wet surface)
+	# 3. Surface wetness (only works on wet surfaces)
+
+	var surface_is_wet = canvas_water > 0.01  # Surface needs some water for diffusion
+
+	if surface_is_wet and pressure > 0.0:
+		# Calculate pigment mass difference (alpha represents concentration/mass)
+		var brush_concentration = color.a
+		var canvas_concentration = canvas_color.a
+		var concentration_diff = max(0.0, brush_concentration - canvas_concentration)
+
+		# Pressure-driven diffusion: proportional to pressure and concentration difference
+		# This allows adding strong color to wet surfaces by pressing hard
+		var diffusion_strength = pressure * concentration_diff * 0.5  # 0.5 is tuning factor
+
+		# Create diffusion pigment (same color as brush, scaled by diffusion strength)
+		var diffusion_pigment = Color(color.r, color.g, color.b, color.a * diffusion_strength)
+
+		# Add diffusion pigment to transferred pigment
+		transferred_pigment.a += diffusion_pigment.a
+		# Mix colors proportionally (weight by their alpha values)
+		if transferred_pigment.a > 0.0:
+			var total_mass = transferred_pigment.a
+			var water_weight = (color.a * pigment_transfer_ratio) / total_mass if total_mass > 0 else 0
+			var diffusion_weight = (diffusion_pigment.a) / total_mass if total_mass > 0 else 0
+			transferred_pigment.r = color.r * water_weight + diffusion_pigment.r * diffusion_weight
+			transferred_pigment.g = color.g * water_weight + diffusion_pigment.g * diffusion_weight
+			transferred_pigment.b = color.b * water_weight + diffusion_pigment.b * diffusion_weight
+
+	# Mix the transferred pigment (water + diffusion) with existing pigment
+	var mixed_color = PigmentMixer._mix_pigments_optical(transferred_pigment, canvas_color)
+	mobile_read_buffer.set_pixel(x, y, mixed_color)
 
 	mark_watercolor_dirty()
 

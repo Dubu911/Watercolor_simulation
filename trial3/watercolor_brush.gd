@@ -160,6 +160,6 @@ func _paint_circular_dab(center: Vector2, radius: float):
 # Paint a single pixel via coordinator
 func _paint_pixel(x: int, y: int):
 	if coordinator_ref.has_method("paint_watercolor_pixel"):
-		coordinator_ref.paint_watercolor_pixel(x, y, brush_color, water_amount)
+		coordinator_ref.paint_watercolor_pixel(x, y, brush_color, water_amount, current_pressure)
 	else:
 		printerr("watercolor_brush ERROR: Coordinator missing 'paint_watercolor_pixel' method!")
