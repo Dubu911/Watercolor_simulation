@@ -11,6 +11,10 @@ extends Node
 @export var color_picker_path: NodePath
 @export var brush_size_popup_path: NodePath
 @export var brush_size_value_label_path: NodePath
+@export var pencil_size_popup_path: NodePath
+@export var pencil_size_value_label_path: NodePath
+@export var eraser_size_popup_path: NodePath
+@export var eraser_size_value_label_path: NodePath
 
 # --- Internal References to PathNode ---
 var painting_coordinator: Node
@@ -22,8 +26,14 @@ var current_color_display: ColorRect
 var color_picker: ColorPicker
 var brush_size_popup: PanelContainer
 var brush_size_value_label: Label
+var pencil_size_popup: PanelContainer
+var pencil_size_value_label: Label
+var eraser_size_popup: PanelContainer
+var eraser_size_value_label: Label
 var brush_cursor_outer: Sprite2D
 var brush_cursor_inner: Sprite2D
+var pencil_cursor: Sprite2D
+var eraser_cursor: Sprite2D
 
 # --- Current Brush State ---
 var current_hue: Color = Color.RED  # Base hue (RGB only, alpha ignored)
@@ -74,13 +84,39 @@ func _ready():
 	if not brush_size_value_label:
 		printerr("BrushManager ERROR: BrushSizeValueLabel not found!")
 
+	pencil_size_popup = get_node_or_null(pencil_size_popup_path) as PanelContainer
+	if not pencil_size_popup:
+		printerr("BrushManager ERROR: PencilSizePopup not found!")
+
+	pencil_size_value_label = get_node_or_null(pencil_size_value_label_path) as Label
+	if not pencil_size_value_label:
+		printerr("BrushManager ERROR: PencilSizeValueLabel not found!")
+
+	eraser_size_popup = get_node_or_null(eraser_size_popup_path) as PanelContainer
+	if not eraser_size_popup:
+		printerr("BrushManager ERROR: EraserSizePopup not found!")
+
+	eraser_size_value_label = get_node_or_null(eraser_size_value_label_path) as Label
+	if not eraser_size_value_label:
+		printerr("BrushManager ERROR: EraserSizeValueLabel not found!")
+
 	# Get brush cursor sprites
 	brush_cursor_outer = get_node_or_null("../layers_container/brush_cursor_outer") as Sprite2D
 	brush_cursor_inner = get_node_or_null("../layers_container/brush_cursor_inner") as Sprite2D
+	pencil_cursor = get_node_or_null("../layers_container/pencil_cursor") as Sprite2D
+	eraser_cursor = get_node_or_null("../layers_container/eraser_cursor") as Sprite2D
 
 	# Initialize brush cursor textures
 	if brush_cursor_outer and brush_cursor_inner:
 		_initialize_brush_cursor()
+
+	# Initialize pencil cursor
+	if pencil_cursor:
+		_initialize_pencil_cursor()
+
+	# Initialize eraser cursor
+	if eraser_cursor:
+		_initialize_eraser_cursor()
 
 	# Note: Signals are connected in the scene file (main3.tscn)
 
@@ -172,10 +208,18 @@ func _on_pencil_button_pressed():
 		print("brush_manager: Pencil Brush selected")
 		_set_active_brush(pencil_brush)
 
+		# Toggle pencil size popup
+		if is_instance_valid(pencil_size_popup):
+			pencil_size_popup.visible = not pencil_size_popup.visible
+
 func _on_eraser_button_pressed():
 	if eraser_brush:
 		print("brush_manager: Eraser Brush selected")
 		_set_active_brush(eraser_brush)
+
+		# Toggle eraser size popup
+		if is_instance_valid(eraser_size_popup):
+			eraser_size_popup.visible = not eraser_size_popup.visible
 
 # Called when the color picker color changes
 func _on_color_picker_changed(new_color: Color):
@@ -209,6 +253,36 @@ func _on_brush_size_slider_changed(value: float):
 		_update_brush_cursor_size()
 
 		print("Brush size: ", value)
+
+# Called when pencil size slider changes
+func _on_pencil_size_slider_changed(value: float):
+	if is_instance_valid(pencil_brush):
+		# Value is normalized 0.0-1.0
+		pencil_brush.set_pencil_size(value)
+
+		# Update the label to show actual pixel size
+		if is_instance_valid(pencil_size_value_label):
+			pencil_size_value_label.text = "%.2f" % pencil_brush.base_pencil_size
+
+		# Update pencil cursor size
+		_update_pencil_cursor_size()
+
+		print("Pencil size: ", pencil_brush.base_pencil_size)
+
+# Called when eraser size slider changes
+func _on_eraser_size_slider_changed(value: float):
+	if is_instance_valid(eraser_brush):
+		# Value is normalized 0.0-1.0
+		eraser_brush.set_eraser_size(value)
+
+		# Update the label to show actual pixel size
+		if is_instance_valid(eraser_size_value_label):
+			eraser_size_value_label.text = "%.2f" % eraser_brush.base_eraser_size
+
+		# Update eraser cursor size
+		_update_eraser_cursor_size()
+
+		print("Eraser size: ", eraser_brush.base_eraser_size)
 
 # Initialize brush cursor circle textures
 func _initialize_brush_cursor():
@@ -263,14 +337,71 @@ func _update_brush_cursor(mouse_pos_img_space: Vector2, is_over_canvas: bool):
 	if not is_instance_valid(brush_cursor_outer) or not is_instance_valid(brush_cursor_inner):
 		return
 
-	# Only show when watercolor brush is active and mouse is over canvas
+	# Get active brush
 	var active_brush = painting_coordinator.get("active_brush_node")
-	var should_show = is_over_canvas and active_brush == watercolor_brush
 
-	brush_cursor_outer.visible = should_show
-	brush_cursor_inner.visible = should_show
+	# Show watercolor brush cursor when watercolor is active and mouse is over canvas
+	var should_show_brush = is_over_canvas and active_brush == watercolor_brush
+	brush_cursor_outer.visible = should_show_brush
+	brush_cursor_inner.visible = should_show_brush
 
-	if should_show:
+	if should_show_brush:
 		# Position cursors at mouse location
 		brush_cursor_outer.position = mouse_pos_img_space
 		brush_cursor_inner.position = mouse_pos_img_space
+
+	# Show pencil cursor when pencil is active and mouse is over canvas
+	if is_instance_valid(pencil_cursor):
+		var should_show_pencil = is_over_canvas and active_brush == pencil_brush
+		pencil_cursor.visible = should_show_pencil
+
+		if should_show_pencil:
+			# Position cursor at mouse location
+			pencil_cursor.position = mouse_pos_img_space
+
+	# Show eraser cursor when eraser is active and mouse is over canvas
+	if is_instance_valid(eraser_cursor):
+		var should_show_eraser = is_over_canvas and active_brush == eraser_brush
+		eraser_cursor.visible = should_show_eraser
+
+		if should_show_eraser:
+			# Position cursor at mouse location
+			eraser_cursor.position = mouse_pos_img_space
+
+# Initialize pencil cursor circle texture
+func _initialize_pencil_cursor():
+	# Create single circle texture for pencil (smaller texture size)
+	var circle = _create_circle_texture(32, 15.5, Color(0, 0, 0, 1))
+	pencil_cursor.texture = circle
+
+	# Update initial size
+	_update_pencil_cursor_size()
+
+# Update pencil cursor size based on current pencil settings
+func _update_pencil_cursor_size():
+	if not is_instance_valid(pencil_brush) or not is_instance_valid(pencil_cursor):
+		return
+
+	var pencil_size = pencil_brush.base_pencil_size
+
+	# Scale the cursor to match pencil size (15.5 is the base radius in the texture)
+	pencil_cursor.scale = Vector2(pencil_size / 15.5, pencil_size / 15.5)
+
+# Initialize eraser cursor circle texture
+func _initialize_eraser_cursor():
+	# Create single circle texture for eraser
+	var circle = _create_circle_texture(32, 15.5, Color(1, 1, 1, 1))
+	eraser_cursor.texture = circle
+
+	# Update initial size
+	_update_eraser_cursor_size()
+
+# Update eraser cursor size based on current eraser settings
+func _update_eraser_cursor_size():
+	if not is_instance_valid(eraser_brush) or not is_instance_valid(eraser_cursor):
+		return
+
+	var eraser_size = eraser_brush.base_eraser_size
+
+	# Scale the cursor to match eraser size (15.5 is the base radius in the texture)
+	eraser_cursor.scale = Vector2(eraser_size / 15.5, eraser_size / 15.5)

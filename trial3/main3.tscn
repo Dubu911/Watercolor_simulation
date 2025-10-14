@@ -17,6 +17,20 @@ script = ExtResource("1_bp1uf")
 
 [node name="layers_container" type="Node2D" parent="."]
 
+[node name="background" type="Sprite2D" parent="layers_container"]
+centered = false
+
+[node name="static_layer" type="Sprite2D" parent="layers_container"]
+visible = false
+
+[node name="mobile_layer" type="Sprite2D" parent="layers_container"]
+visible = false
+
+[node name="water_layer" type="Sprite2D" parent="layers_container"]
+texture_filter = 1
+
+[node name="pencil_layer" type="Sprite2D" parent="layers_container"]
+
 [node name="brush_cursor_outer" type="Sprite2D" parent="layers_container"]
 visible = false
 modulate = Color(1, 1, 1, 0.3)
@@ -27,18 +41,15 @@ visible = false
 modulate = Color(1, 1, 1, 0.6)
 z_index = 101
 
-[node name="background" type="Sprite2D" parent="layers_container"]
-centered = false
-
-[node name="static_layer" type="Sprite2D" parent="layers_container"]
-
-[node name="mobile_layer" type="Sprite2D" parent="layers_container"]
-
-[node name="water_layer" type="Sprite2D" parent="layers_container"]
+[node name="pencil_cursor" type="Sprite2D" parent="layers_container"]
 visible = false
-texture_filter = 1
+modulate = Color(0, 0, 0, 0.8)
+z_index = 102
 
-[node name="pencil_layer" type="Sprite2D" parent="layers_container"]
+[node name="eraser_cursor" type="Sprite2D" parent="layers_container"]
+visible = false
+modulate = Color(1, 1, 1, 0.6)
+z_index = 103
 
 [node name="brush_manager" type="Node" parent="."]
 script = ExtResource("2_2yaok")
@@ -51,6 +62,10 @@ current_color_display_path = NodePath("../CanvasLayer/color_swatch/current_color
 color_picker_path = NodePath("../CanvasLayer/color_picker")
 brush_size_popup_path = NodePath("../CanvasLayer/brush_size_popup")
 brush_size_value_label_path = NodePath("../CanvasLayer/brush_size_popup/brush_size_control/size_value_label")
+pencil_size_popup_path = NodePath("../CanvasLayer/pencil_size_popup")
+pencil_size_value_label_path = NodePath("../CanvasLayer/pencil_size_popup/pencil_size_control/size_value_label")
+eraser_size_popup_path = NodePath("../CanvasLayer/eraser_size_popup")
+eraser_size_value_label_path = NodePath("../CanvasLayer/eraser_size_popup/eraser_size_control/size_value_label")
 
 [node name="watercolor_brush" type="Node" parent="brush_manager"]
 script = ExtResource("2_shnf3")
@@ -199,6 +214,59 @@ layout_mode = 2
 text = "2.0"
 horizontal_alignment = 1
 
+[node name="pencil_size_popup" type="PanelContainer" parent="CanvasLayer"]
+visible = false
+offset_left = 1611.0
+offset_top = 859.0
+offset_right = 1904.0
+offset_bottom = 938.0
+
+[node name="pencil_size_control" type="VBoxContainer" parent="CanvasLayer/pencil_size_popup"]
+layout_mode = 2
+
+[node name="title_label" type="Label" parent="CanvasLayer/pencil_size_popup/pencil_size_control"]
+layout_mode = 2
+text = "Pencil Size"
+horizontal_alignment = 1
+
+[node name="pencil_size_slider" type="HSlider" parent="CanvasLayer/pencil_size_popup/pencil_size_control"]
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+
+[node name="size_value_label" type="Label" parent="CanvasLayer/pencil_size_popup/pencil_size_control"]
+layout_mode = 2
+text = "0.50"
+horizontal_alignment = 1
+
+[node name="eraser_size_popup" type="PanelContainer" parent="CanvasLayer"]
+visible = false
+offset_left = 1611.0
+offset_top = 949.0
+offset_right = 1904.0
+offset_bottom = 1028.0
+
+[node name="eraser_size_control" type="VBoxContainer" parent="CanvasLayer/eraser_size_popup"]
+layout_mode = 2
+
+[node name="title_label" type="Label" parent="CanvasLayer/eraser_size_popup/eraser_size_control"]
+layout_mode = 2
+text = "Eraser Size"
+horizontal_alignment = 1
+
+[node name="eraser_size_slider" type="HSlider" parent="CanvasLayer/eraser_size_popup/eraser_size_control"]
+custom_minimum_size = Vector2(250, 0)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 0.4
+
+[node name="size_value_label" type="Label" parent="CanvasLayer/eraser_size_popup/eraser_size_control"]
+layout_mode = 2
+text = "3.00"
+horizontal_alignment = 1
+
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/watercolor_button" to="brush_manager" method="_on_watercolor_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/pencil_button" to="brush_manager" method="_on_pencil_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/eraser_button" to="brush_manager" method="_on_eraser_button_pressed"]
@@ -206,3 +274,5 @@ horizontal_alignment = 1
 [connection signal="value_changed" from="CanvasLayer/pigment_control/pigment_alpha_slider" to="brush_manager" method="_on_pigment_alpha_slider_changed"]
 [connection signal="value_changed" from="CanvasLayer/water_control/water_slider" to="brush_manager" method="_on_water_slider_value_changed"]
 [connection signal="value_changed" from="CanvasLayer/brush_size_popup/brush_size_control/brush_size_slider" to="brush_manager" method="_on_brush_size_slider_changed"]
+[connection signal="value_changed" from="CanvasLayer/pencil_size_popup/pencil_size_control/pencil_size_slider" to="brush_manager" method="_on_pencil_size_slider_changed"]
+[connection signal="value_changed" from="CanvasLayer/eraser_size_popup/eraser_size_control/eraser_size_slider" to="brush_manager" method="_on_eraser_size_slider_changed"]

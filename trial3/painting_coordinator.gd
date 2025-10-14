@@ -271,21 +271,24 @@ func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
 
 func draw_line_on_pencil_layer(from_pos: Vector2, to_pos: Vector2, color: Color, radius: float):
 	if not is_instance_valid(pencil_image): return
-	
+
 	var distance = from_pos.distance_to(to_pos)
-	
+
 	# Determine number of steps to draw circles along the line to avoid gaps
 	var step_size = max(1.0, radius * 0.5)
 	var steps = int(ceil(distance / step_size))
 	if steps == 0: steps = 1
 
+	# Check if this is erasing (transparent color)
+	var is_erasing = (color.a == 0.0)
+
 	for i in range(steps + 1):
 		var p = from_pos.lerp(to_pos, float(i) / steps)
-		_draw_dot(pencil_image, p.floor(), color, radius)
-	
+		_draw_dot(pencil_image, p.floor(), color, radius, is_erasing)
+
 	mark_pencil_dirty()
 
-func _draw_dot(img: Image, center_pos: Vector2, color: Color, radius: float):
+func _draw_dot(img: Image, center_pos: Vector2, color: Color, radius: float, is_erasing: bool = false):
 	var i_radius = int(ceil(radius))
 	var center_x = int(center_pos.x)
 	var center_y = int(center_pos.y)
@@ -296,8 +299,18 @@ func _draw_dot(img: Image, center_pos: Vector2, color: Color, radius: float):
 				var draw_x = center_x + x_offset
 				var draw_y = center_y + y_offset
 				if draw_x >= 0 and draw_x < CANVAS_WIDTH and draw_y >= 0 and draw_y < CANVAS_HEIGHT:
-					# For pencil/eraser, we just overwrite the pixel
-					img.set_pixel(draw_x, draw_y, color)
+					if is_erasing:
+						# Erasing: always overwrite with transparent
+						img.set_pixel(draw_x, draw_y, color)
+					else:
+						# Drawing pencil: keep the darkest value (highest alpha)
+						# This prevents light pencil strokes from overwriting dark ones
+						var existing_color = img.get_pixel(draw_x, draw_y)
+
+						# Only update if new color is darker (higher alpha = more intense)
+						if color.a > existing_color.a:
+							img.set_pixel(draw_x, draw_y, color)
+						# If existing is darker, keep it (do nothing)
 
 
 # Input handling.
