@@ -2,15 +2,16 @@
 extends Node
 
 # --- SIMULATION CONSTANTS ---
-const DIFFUSION_RATE = 0.1
-const EVAPORATION_CONST = 0.01
+@export var DIFFUSION_RATE: float = 0.1  # pigment diffusion speed (0.01 .. 0.5)
+@export var EVAPORATION_CONST: float = 0.01  # water evaporation rate (0.001 .. 0.05)
 #const S = 0.5 # Surface tension coefficient
 #const SP = 1.3 # Spread force coefficient
 @export var S: float = 0.10 # Surface tension coefficient
 @export var SP: float = 0.50 # Spread force coefficient
-@export var HOLD_THRESHOLD = 5.0 # The force needed to wet a dry pixel
+@export var HOLD_THRESHOLD: float = 5.0 # The force needed to wet a dry pixel
 @export var k_deposit_base: float = 1.0  # overall deposition speed (0.3..3.0)
-@export var w_scale: float = 0.2        # water scale (≈ how much water feels “wet”); 0.05 .. 0.3
+@export var w_scale: float = 0.2        # water scale (≈ how much water feels "wet"); 0.05 .. 0.3
+@export var diffusion_limiter: float = 0.25  # max fraction of pigment that can diffuse per neighbor per frame (0.1 .. 0.5)
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
 const ENERGY_LOSS_ON_REDISTRIBUTION = 0.5 # How much energy is lost when flow is redirected
 const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
@@ -93,13 +94,14 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 
 	_swap_water_buffers()
 	_swap_mobile_buffers()
-	
-	# step 4, the mobile layer pigment goes down to the static layer to set a concrete image.
+
+	# step 4, surface diffusion on the mobile layer (happens before deposition)
+	_simulate_diffusion(delta) # pigment diffuses on the wet surface based on contact area
+	_swap_mobile_buffers()
+
+	# step 5, the mobile layer pigment goes down to the static layer to set a concrete image.
 	_simulate_deposition(delta) # mobile_image -> static_image
-	
-	# step 5, diffusion in the static layer. This is independent from water movement, about pigment movement
-	#_simulate_diffusion(delta) # pigments in mstatic_image diffusses
-	
+
 	_swap_mobile_buffers()
 	_swap_static_buffers()	
 	
@@ -829,6 +831,92 @@ func _simulate_evaporation(delta: float):
 			water_write.set_pixel(x, y, Color(new_water, 0, 0))
 
 
+# This function will handle the spreading of mobile pigment based on contact area (water amount).
+# Diffusion happens only on the mobile (surface) layer, driven by pigment concentration gradients
+# and limited by the available water "contact area" between adjacent pixels.
+# Uses INFLOW MODEL: each pixel gathers pigment from neighbors (GPU-parallelizable)
+func _simulate_diffusion(delta: float):
+	# Copy current state to write buffer first (CPU cache-friendly)
+	mobile_write.blit_rect(mobile_read, Rect2i(0, 0, canvas_width, canvas_height), Vector2i(0, 0))
+
+	# Diffusion coefficient - controls overall diffusion speed
+	var D_base = DIFFUSION_RATE * delta
+
+	# INFLOW MODEL: Each pixel computes its final state by gathering from neighbors
+	# Only reads from mobile_read, only writes to mobile_write
+	for y in range(canvas_height):
+		for x in range(canvas_width):
+			var water_here = water_read.get_pixel(x, y).r
+			var pigment_here = mobile_read.get_pixel(x, y)
+			var mass_here = PigmentMixer._alpha_to_mass(pigment_here.a)
+
+			# Skip diffusion if this pixel is dry
+			if water_here < DRY_PIXEL_LIMIT:
+				continue
+
+			# Start with what's already at this pixel
+			var final_mass = mass_here
+			var final_hue = Color(pigment_here.r, pigment_here.g, pigment_here.b, 1.0)
+
+			# Calculate net inflow/outflow with each of the 4 neighbors
+			var neighbors = [
+				{"dx": 1, "dy": 0},   # right
+				{"dx": -1, "dy": 0},  # left
+				{"dx": 0, "dy": 1},   # down
+				{"dx": 0, "dy": -1}   # up
+			]
+
+			for neighbor in neighbors:
+				var nx = x + neighbor.dx
+				var ny = y + neighbor.dy
+
+				# Bounds check
+				if nx < 0 or nx >= canvas_width or ny < 0 or ny >= canvas_height:
+					continue
+
+				var water_neighbor = water_read.get_pixel(nx, ny).r
+				var pigment_neighbor = mobile_read.get_pixel(nx, ny)
+				var mass_neighbor = PigmentMixer._alpha_to_mass(pigment_neighbor.a)
+
+				# Contact area: use minimum of the two water amounts
+				var contact_area = min(water_here, water_neighbor)
+
+				# Skip if contact area is too small (dry boundary)
+				if contact_area < DRY_PIXEL_LIMIT:
+					continue
+
+				# Calculate mass gradient: positive means neighbor has MORE pigment than here
+				# So pigment flows FROM neighbor TO here (inflow to this pixel)
+				var mass_gradient = mass_neighbor - mass_here
+				var flux = D_base * contact_area * mass_gradient
+
+				# Clamp flux using adjustable diffusion_limiter
+				if flux > 0.0:
+					# Inflow: pigment coming from neighbor to here
+					flux = min(flux, mass_neighbor * diffusion_limiter)
+
+					# Mix incoming pigment with what we already have
+					var hue_neighbor = Color(pigment_neighbor.r, pigment_neighbor.g, pigment_neighbor.b, 1.0)
+					var incoming_pigment = Color(hue_neighbor.r, hue_neighbor.g, hue_neighbor.b, PigmentMixer._mass_to_alpha(flux))
+					var current_accumulated = Color(final_hue.r, final_hue.g, final_hue.b, PigmentMixer._mass_to_alpha(final_mass))
+
+					current_accumulated = PigmentMixer._mix_pigments_optical(incoming_pigment, current_accumulated)
+					final_mass = PigmentMixer._alpha_to_mass(current_accumulated.a)
+					final_hue = Color(current_accumulated.r, current_accumulated.g, current_accumulated.b, 1.0)
+				elif flux < 0.0:
+					# Outflow: pigment leaving from here to neighbor
+					# Subtract the mass that left (clamped by diffusion_limiter)
+					var outflow = min(abs(flux), mass_here * diffusion_limiter)
+					final_mass -= outflow
+					final_mass = max(0.0, final_mass)
+
+			# Write final result for this pixel (only if diffusion occurred)
+			if abs(final_mass - mass_here) > 1e-8:
+				var final_pigment = Color(final_hue.r, final_hue.g, final_hue.b, PigmentMixer._mass_to_alpha(final_mass))
+				mobile_write.set_pixel(x, y, final_pigment)
+
+
+
 # This function will handle wet pigment getting "stuck" to the paper and becoming dry.
 func _simulate_deposition(delta: float) -> void:
 	# --- start from current buffers ---
@@ -857,7 +945,10 @@ func _simulate_deposition(delta: float) -> void:
 				continue
 
 			# --- Wet deposition (rate depends on water + absorbency) ---
+			# Use squared water_factor to make deposition much slower when there's lots of water
+			# This keeps pigments mobile longer, allowing more time for diffusion and flow
 			var water_factor = w_scale / (water_here + w_scale)
+			water_factor = water_factor * water_factor  # Square it for stronger suppression
 			var rate = k_deposit_base * max(0.0, absorbency) * water_factor
 
 			var deposit_fraction = 1.0 - exp(-rate * delta)
@@ -880,13 +971,3 @@ func _simulate_deposition(delta: float) -> void:
 			var static_here = static_read.get_pixel(x, y)
 			static_write.set_pixel(x, y, PigmentMixer._mix_pigments_optical(deposit_color, static_here))
 			mobile_write.set_pixel(x, y, remaining_color)
-
-
-
-# This function will handle the spreading of water and mobile pigment.
-func _simulate_diffusion(delta: float, water: Image, mobile_pigment: Image):
-	# TODO: Implement the diffusion logic here.
-	# This will involve looping through each pixel and its neighbors.
-	pass
-
-	
