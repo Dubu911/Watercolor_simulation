@@ -12,7 +12,7 @@
 [ext_resource type="Texture2D" uid="uid://j58fqdqtg4cu" path="res://icons/eraser.png" id="5_shnf3"]
 [ext_resource type="Script" uid="uid://b6vytgsswq7vp" path="res://trial4/physics_simulator.gd" id="7_a7fc4"]
 
-[node name="main3" type="Node2D"]
+[node name="main4" type="Node2D"]
 script = ExtResource("1_bp1uf")
 
 [node name="layers_container" type="Node2D" parent="."]
@@ -21,12 +21,11 @@ script = ExtResource("1_bp1uf")
 centered = false
 
 [node name="static_layer" type="Sprite2D" parent="layers_container"]
-visible = false
 
 [node name="mobile_layer" type="Sprite2D" parent="layers_container"]
-visible = false
 
 [node name="water_layer" type="Sprite2D" parent="layers_container"]
+visible = false
 texture_filter = 1
 
 [node name="pencil_layer" type="Sprite2D" parent="layers_container"]
