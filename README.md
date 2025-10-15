@@ -10,7 +10,7 @@ It is being developed using the [Godot Game Engine](https://godotengine.org/).
 
 ## Status
 
-Implementing the watercolor physics simulation in trial3.
+Converting all logics in trial3 to trial4 using shaders.
 
 ## Next Steps
 -Support broader brush inputs (pressure, stroke speed)

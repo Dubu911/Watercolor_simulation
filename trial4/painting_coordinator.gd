@@ -34,8 +34,6 @@ var static_write_buffer: Image
 var pencil_image: Image
 var absorbency_map : Image
 var displacement_map : Image
-var flow_memory_read_buffer : Image  # Stores water received from each direction (RGBAF: R=from_right, G=from_left, B=from_down, A=from_up)
-var flow_memory_write_buffer : Image
 
 # --- Textures (The GPU version of the data for display) ---
 var background_texture: ImageTexture
@@ -124,12 +122,7 @@ func _ready():
 	# Physics layers
 	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	displacement_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-
-	# Flow memory double buffers (for oscillation prevention)
-	flow_memory_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	flow_memory_read_buffer.fill(Color(0, 0, 0, 0))  # Initialize with zero flow memory
-	flow_memory_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-
+	
 	# Initialize the paper properties
 	_initialize_paper_properties()
 	
@@ -161,9 +154,7 @@ func _ready():
 								static_read_buffer,
 								static_write_buffer,
 								absorbency_map,
-								displacement_map,
-								flow_memory_read_buffer,
-								flow_memory_write_buffer)
+								displacement_map)
 								
 # The main simulation loop
 func _process(_delta: float):
