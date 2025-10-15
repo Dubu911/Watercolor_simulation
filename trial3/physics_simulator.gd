@@ -10,8 +10,6 @@ extends Node
 @export var k_deposit_base: float = 1.0  # overall deposition speed (0.3..3.0)
 @export var w_scale: float = 0.2        # water scale (≈ how much water feels "wet"); 0.05 .. 0.3
 @export var diffusion_limiter: float = 0.25  # max fraction of pigment that can diffuse per neighbor per frame (0.1 .. 0.5)
-@export var FLOW_MEMORY_STRENGTH: float = 0.8  # How much to cancel opposing flows (0.0 = no cancellation, 1.0 = full cancellation)
-@export var FLOW_MEMORY_DECAY: float = 0.85  # How much flow memory remains each frame (0.8 = fast decay, 0.95 = slow decay)
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
 const ENERGY_LOSS_ON_REDISTRIBUTION = 0.5 # How much energy is lost when flow is redirected
 const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
@@ -31,8 +29,6 @@ var static_read: Image
 var static_write: Image
 var absorbency_map: Image
 var displacement_map: Image
-var flow_memory_read: Image  # Stores water received from each direction (RGBAF: R=from_right, G=from_left, B=from_down, A=from_up)
-var flow_memory_write: Image
 
 # Fine tunning purpose
 # A flag to prevent spamming the print statement
@@ -66,8 +62,7 @@ func _process(delta: float):
 
 
 func init(p_width: int, p_height: int, p_water_read: Image, p_mobile_read: Image, p_water_write: Image,
-		  p_mobile_write: Image, p_static_read: Image, p_static_write: Image, p_absorbency: Image, p_displacement: Image,
-		  p_flow_memory_read: Image, p_flow_memory_write: Image):
+		  p_mobile_write: Image, p_static_read: Image, p_static_write: Image, p_absorbency: Image, p_displacement: Image):
 	canvas_width = p_width
 	canvas_height = p_height
 
@@ -79,8 +74,6 @@ func init(p_width: int, p_height: int, p_water_read: Image, p_mobile_read: Image
 	static_write = p_static_write
 	absorbency_map = p_absorbency
 	displacement_map = p_displacement
-	flow_memory_read = p_flow_memory_read
-	flow_memory_write = p_flow_memory_write
 	
 func run_simulation_step(delta: float, g_x: float, g_y: float):
 	# step 1, evaporation on the water layer
@@ -127,11 +120,6 @@ func _swap_static_buffers():
 	var temp_static = static_read
 	static_read = static_write
 	static_write = temp_static
-
-func _swap_flow_memory_buffers():
-	var temp_flow = flow_memory_read
-	flow_memory_read = flow_memory_write
-	flow_memory_write = temp_flow
 
 
 # This function calculates force acting on water due to gravity, surface tention and spreading force.
@@ -534,7 +522,6 @@ func _apply_water_displacement_with_pigment(delta: float):
 	# copy the current state to the write buffer.
 	water_write.fill(Color(0,0,0,0))
 	mobile_write.fill(Color(1,1,1,0))
-	flow_memory_write.fill(Color(0, 0, 0, 0))  # Clear flow memory write buffer
 
 	# Now, iterate and apply transfers between pixels.
 	for y in range(canvas_height):
@@ -555,25 +542,6 @@ func _apply_water_displacement_with_pigment(delta: float):
 			var want_d = max(0.0, F.b) * movable_water * delta
 			var want_u = max(0.0, F.a) * movable_water * delta
 
-			# --- FLOW MEMORY CANCELLATION ---
-			# Read flow memory from previous frame (water received from each direction)
-			# Memory format: R=from_right, G=from_left, B=from_down, A=from_up
-			var prev_memory = flow_memory_read.get_pixel(x, y)
-			var received_from_right = prev_memory.r  # Water that came FROM right last frame
-			var received_from_left = prev_memory.g   # Water that came FROM left last frame
-			var received_from_down = prev_memory.b   # Water that came FROM down last frame
-			var received_from_up = prev_memory.a     # Water that came FROM up last frame
-
-			# Apply cancellation: reduce outflow by previous inflow in opposite direction
-			# If water came from right last frame, cancel some of the leftward push
-			want_l = max(0.0, want_l - received_from_right * FLOW_MEMORY_STRENGTH)
-			# If water came from left last frame, cancel some of the rightward push
-			want_r = max(0.0, want_r - received_from_left * FLOW_MEMORY_STRENGTH)
-			# If water came from down last frame, cancel some of the upward push
-			want_u = max(0.0, want_u - received_from_down * FLOW_MEMORY_STRENGTH)
-			# If water came from up last frame, cancel some of the downward push
-			want_d = max(0.0, want_d - received_from_up * FLOW_MEMORY_STRENGTH)
-			
 			var directions = [["right",want_r],["left",want_l],["down",want_d], ["up",want_u]]
 			directions.sort_custom(func(a, b): return a[1] > b[1])
 			
@@ -626,46 +594,21 @@ func _apply_water_displacement_with_pigment(delta: float):
 			_add_content(x, y, current_water_here - total_outflow, pigment_staying)
 			
 			# Distribute the content that MOVES to the neighbors
-			# Also record inflows in flow_memory_write for next frame's cancellation
 			if total_outflow > 0.0001:
 				var hue = Color(pigment_here.r, pigment_here.g, pigment_here.b, 1.0)
 				# and pass the correct water amount (want_r, etc.)
 				if want_r > 0.0:
 					var mass_out = mass_movable * ( want_r / total_outflow)
 					_add_content(x + 1, y, want_r, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
-					# Record that neighbor (x+1, y) received water from LEFT (this pixel pushed right)
-					var neighbor_memory = flow_memory_write.get_pixel(x + 1, y)
-					flow_memory_write.set_pixel(x + 1, y, Color(neighbor_memory.r, neighbor_memory.g + want_r, neighbor_memory.b, neighbor_memory.a))
 				if want_l > 0.0:
 					var mass_out = mass_movable * (want_l / total_outflow)
 					_add_content(x - 1, y, want_l, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
-					# Record that neighbor (x-1, y) received water from RIGHT (this pixel pushed left)
-					var neighbor_memory = flow_memory_write.get_pixel(x - 1, y)
-					flow_memory_write.set_pixel(x - 1, y, Color(neighbor_memory.r + want_l, neighbor_memory.g, neighbor_memory.b, neighbor_memory.a))
 				if want_d > 0.0:
 					var mass_out = mass_movable * (want_d / total_outflow)
 					_add_content(x, y + 1, want_d, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
-					# Record that neighbor (x, y+1) received water from UP (this pixel pushed down)
-					var neighbor_memory = flow_memory_write.get_pixel(x, y + 1)
-					flow_memory_write.set_pixel(x, y + 1, Color(neighbor_memory.r, neighbor_memory.g, neighbor_memory.b, neighbor_memory.a + want_d))
 				if want_u > 0.0:
 					var mass_out = mass_movable * (want_u / total_outflow)
 					_add_content(x, y - 1, want_u, Color(hue.r, hue.g, hue.b, PigmentMixer._mass_to_alpha(mass_out)))
-					# Record that neighbor (x, y-1) received water from DOWN (this pixel pushed up)
-					var neighbor_memory = flow_memory_write.get_pixel(x, y - 1)
-					flow_memory_write.set_pixel(x, y - 1, Color(neighbor_memory.r, neighbor_memory.g, neighbor_memory.b + want_u, neighbor_memory.a))
-
-	# Apply decay to flow memory after recording all inflows
-	for y in range(canvas_height):
-		for x in range(canvas_width):
-			var current_memory = flow_memory_write.get_pixel(x, y)
-			var decayed = Color(
-				current_memory.r * FLOW_MEMORY_DECAY,
-				current_memory.g * FLOW_MEMORY_DECAY,
-				current_memory.b * FLOW_MEMORY_DECAY,
-				current_memory.a * FLOW_MEMORY_DECAY
-			)
-			flow_memory_write.set_pixel(x, y, decayed)
 
 # GPU implementation ready approach (still running on CPU)
 func _apply_water_displacement_with_pigment_inflow(delta: float):
