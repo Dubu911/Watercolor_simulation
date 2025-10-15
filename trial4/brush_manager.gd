@@ -41,6 +41,10 @@ var current_pigment_alpha: float = 0.5  # Pigment concentration (0.0 - 1.0)
 var current_pigment_color: Color = Color(1.0, 0.0, 0.0, 0.5)  # Final color with alpha
 var current_water_amount: float = 0.1  # Water amount
 
+# --- Tablet/Mouse Position Tracking ---
+var _last_screen_pos: Vector2 = Vector2.ZERO
+var _last_world_pos: Vector2 = Vector2.ZERO
+
 
 func _ready():
 	# Get the actual nodes from the NodePaths. Add robust checks.
@@ -127,32 +131,43 @@ func _ready():
 	# Initialize the UI on start
 	_update_color_display()
 
-func _unhandled_input(event: InputEvent):
-	# Get the currently active brush from the coordinator
-	var active_brush_node = painting_coordinator.get("active_brush_node")
+	# Enable process for frame-by-frame cursor updates (works better with tablets)
+	set_process(true)
 
-	# Exit if we don't have a valid brush, coordinator, or layer reference
-	if not is_instance_valid(active_brush_node) or \
-	not is_instance_valid(painting_coordinator) or \
-	not is_instance_valid(layer_for_mouse_pos):
-		return
+# Update cursor position every frame using latest tracked position
+func _process(_delta: float) -> void:
+	# Always place cursor at the latest world position we computed from input events
+	_update_brush_cursor_positions(_last_world_pos)
 
-	# Calculate the mouse position in the coordinate space of our canvas layers
-	var global_mouse_pos = layer_for_mouse_pos.get_global_mouse_position()
-	var mouse_pos_in_image_space = layer_for_mouse_pos.to_local(global_mouse_pos)
+	# Bounds test in image (layer) space using the same last world pos
+	if is_instance_valid(layer_for_mouse_pos) and is_instance_valid(painting_coordinator):
+		var img_pos = layer_for_mouse_pos.to_local(_last_world_pos)
+		var w = painting_coordinator.CANVAS_WIDTH
+		var h = painting_coordinator.CANVAS_HEIGHT
+		var over = img_pos.x >= 0 and img_pos.x < w and img_pos.y >= 0 and img_pos.y < h
+		_update_brush_cursor_visibility(img_pos, over)
 
-	# Check if mouse is over canvas
-	var canvas_width = painting_coordinator.CANVAS_WIDTH
-	var canvas_height = painting_coordinator.CANVAS_HEIGHT
-	var is_over_canvas = (mouse_pos_in_image_space.x >= 0 and mouse_pos_in_image_space.x < canvas_width and
-						  mouse_pos_in_image_space.y >= 0 and mouse_pos_in_image_space.y < canvas_height)
+# IMPORTANT: use _input (not _unhandled_input) so pen hover/motion reaches us even if UI handles it
+func _input(event: InputEvent) -> void:
+	# 1) Update pointer positions from motion events
+	if event is InputEventMouseMotion:
+		_last_screen_pos = event.position
 
-	# Update brush cursor
-	_update_brush_cursor(mouse_pos_in_image_space, is_over_canvas)
+		var cam = get_viewport().get_camera_2d()
+		if cam:
+			# Convert screen position to world position through camera
+			var canvas_transform = cam.get_canvas_transform()
+			_last_world_pos = canvas_transform.affine_inverse() * event.position
+		else:
+			# Fallback if no Camera2D
+			_last_world_pos = get_viewport().get_canvas_transform().affine_inverse() * event.position
 
-	# Pass the event and the calculated position to the active brush's handle_input method
-	if active_brush_node.has_method("handle_input"):
-		active_brush_node.handle_input(event, mouse_pos_in_image_space)
+	# 2) Forward input to active brush with correct image-space position (for draws & pressure)
+	var active = painting_coordinator.get("active_brush_node") if is_instance_valid(painting_coordinator) else null
+	if is_instance_valid(active) and is_instance_valid(layer_for_mouse_pos):
+		var img_pos = layer_for_mouse_pos.to_local(_last_world_pos)
+		if active.has_method("handle_input"):
+			active.handle_input(event, img_pos)
 
 # Updates the final pigment color based on hue and alpha
 func _update_pigment_color():
@@ -332,9 +347,20 @@ func _update_brush_cursor_size():
 	var min_radius = base_size * min_mult
 	brush_cursor_inner.scale = Vector2(min_radius / 15.5, min_radius / 15.5)
 
-# Update brush cursor position and visibility
-func _update_brush_cursor(mouse_pos_img_space: Vector2, is_over_canvas: bool):
-	if not is_instance_valid(brush_cursor_outer) or not is_instance_valid(brush_cursor_inner):
+# Update brush cursor positions using global coordinates
+func _update_brush_cursor_positions(global_mouse_pos: Vector2) -> void:
+	if is_instance_valid(brush_cursor_outer):
+		brush_cursor_outer.global_position = global_mouse_pos
+	if is_instance_valid(brush_cursor_inner):
+		brush_cursor_inner.global_position = global_mouse_pos
+	if is_instance_valid(pencil_cursor):
+		pencil_cursor.global_position = global_mouse_pos
+	if is_instance_valid(eraser_cursor):
+		eraser_cursor.global_position = global_mouse_pos
+
+# Update brush cursor visibility based on active brush and canvas bounds
+func _update_brush_cursor_visibility(mouse_pos_img_space: Vector2, is_over_canvas: bool) -> void:
+	if not is_instance_valid(painting_coordinator):
 		return
 
 	# Get active brush
@@ -342,31 +368,20 @@ func _update_brush_cursor(mouse_pos_img_space: Vector2, is_over_canvas: bool):
 
 	# Show watercolor brush cursor when watercolor is active and mouse is over canvas
 	var should_show_brush = is_over_canvas and active_brush == watercolor_brush
-	brush_cursor_outer.visible = should_show_brush
-	brush_cursor_inner.visible = should_show_brush
-
-	if should_show_brush:
-		# Position cursors at mouse location
-		brush_cursor_outer.position = mouse_pos_img_space
-		brush_cursor_inner.position = mouse_pos_img_space
+	if is_instance_valid(brush_cursor_outer):
+		brush_cursor_outer.visible = should_show_brush
+	if is_instance_valid(brush_cursor_inner):
+		brush_cursor_inner.visible = should_show_brush
 
 	# Show pencil cursor when pencil is active and mouse is over canvas
+	var should_show_pencil = is_over_canvas and active_brush == pencil_brush
 	if is_instance_valid(pencil_cursor):
-		var should_show_pencil = is_over_canvas and active_brush == pencil_brush
 		pencil_cursor.visible = should_show_pencil
 
-		if should_show_pencil:
-			# Position cursor at mouse location
-			pencil_cursor.position = mouse_pos_img_space
-
 	# Show eraser cursor when eraser is active and mouse is over canvas
+	var should_show_eraser = is_over_canvas and active_brush == eraser_brush
 	if is_instance_valid(eraser_cursor):
-		var should_show_eraser = is_over_canvas and active_brush == eraser_brush
 		eraser_cursor.visible = should_show_eraser
-
-		if should_show_eraser:
-			# Position cursor at mouse location
-			eraser_cursor.position = mouse_pos_img_space
 
 # Initialize pencil cursor circle texture
 func _initialize_pencil_cursor():

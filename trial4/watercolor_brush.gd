@@ -16,6 +16,7 @@ var coordinator_ref # Reference to the painting_coordinator
 var is_painting: bool = false # Tracks if the pen/mouse button is held
 var current_pressure: float = 1.0 # Current pressure (1.0 for mouse, 0.0-1.0 for tablet)
 var last_paint_pos: Vector2 = Vector2.ZERO # Last position for interpolation
+var _last_motion_pressure: float = 1.0 # Updated from motion events
 
 # --- Stroke Mask (prevents painting same pixel twice in one stroke) ---
 var stroke_mask: Array  # 2D array [y][x] of booleans
@@ -32,6 +33,21 @@ func activate(coordinator):
 
 	# Initialize stroke mask with canvas dimensions
 	_initialize_stroke_mask()
+
+# Helper to safely read pressure from input events
+func _event_pressure(event: InputEvent) -> float:
+	# Read pressure safely only from motion; buttons may not have it on some platforms.
+	if event is InputEventMouseMotion:
+		# Only touch .pressure if it exists
+		var p = 1.0
+		if "pressure" in event:
+			p = event.pressure
+		# Use actual pressure value, with a small minimum to prevent invisible strokes
+		_last_motion_pressure = max(p, 0.05)
+		return _last_motion_pressure
+
+	# For button events, reuse the last known motion pressure (or default to 0.5)
+	return _last_motion_pressure if _last_motion_pressure > 0.0 else 0.5
 
 func deactivate():
 	is_painting = false
@@ -62,32 +78,21 @@ func handle_input(event: InputEvent, mouse_pos_img_space: Vector2):
 	if not is_instance_valid(coordinator_ref):
 		return
 
-	# Extract pressure from event (works for both mouse and tablet)
-	var pressure = 1.0
-	if event is InputEventMouseButton:
-		if "pressure" in event:
-			pressure = event.pressure  # 0.0-1.0 for tablet
-		else:
-			pressure = 1.0  # Default for mouse
-	elif event is InputEventMouseMotion:
-		if "pressure" in event:
-			pressure = event.pressure  # 0.0-1.0 for tablet
-		else:
-			pressure = 1.0  # Default for mouse
+	var p = _event_pressure(event)
 
-	# Handle mouse button events
+	# Start/end stroke on button; don't access event.pressure here.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.is_pressed():
-			# Start new stroke
-			_start_new_stroke(mouse_pos_img_space, pressure)
+			_start_new_stroke(mouse_pos_img_space, p)
+			print("Pressure at press (fallback to last motion): ", p)
 		else:
-			# End stroke
 			_end_stroke()
 
-	# Handle mouse motion while painting
+	# While moving with pen down, you'll get live pressure from motion
 	elif event is InputEventMouseMotion and is_painting:
-		# Continue stroke
-		_continue_stroke(mouse_pos_img_space, pressure)
+		# Debug to verify you see 0..1 values while drawing
+		print("Motion pressure: ", p)
+		_continue_stroke(mouse_pos_img_space, p)
 
 # Start a new stroke
 func _start_new_stroke(pos: Vector2, pressure: float):
