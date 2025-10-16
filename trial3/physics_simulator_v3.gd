@@ -82,13 +82,13 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	
 	# step 2, water fluid simulation considering gravity, surface tension and spreading force
 	#_calculate_water_displacement(g_x, g_y)
-	#_calculate_water_displacement_4_directional(g_x, g_y)
-	_calculate_water_displacement_4_dir_redistribution(g_x, g_y)
+	_calculate_water_displacement_4_directional(g_x, g_y)
+	#_calculate_water_displacement_4_dir_redistribution(g_x, g_y)
 	
 	# step 3, execute water movement based on step 3 information as well as pigment carried with the water.
 	#_apply_water_displacement(delta)
-	#_apply_water_displacement_with_pigment(delta)
-	_apply_water_displacement_with_pigment_inflow(delta)
+	_apply_water_displacement_with_pigment(delta)
+	#_apply_water_displacement_with_pigment_inflow(delta)
 
 	_swap_water_buffers()
 	_swap_mobile_buffers()

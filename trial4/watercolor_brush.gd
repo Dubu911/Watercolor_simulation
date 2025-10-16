@@ -8,8 +8,8 @@ extends Node
 
 # --- Pressure Settings ---
 @export var pressure_affects_size: bool = true # Does pressure change brush size?
-@export var min_pressure_size_mult: float = 0.5 # Minimum size multiplier at light pressure
-@export var max_pressure_size_mult: float = 1.5 # Maximum size multiplier at full pressure
+@export var min_pressure_size_mult: float = 0.1 # Minimum size multiplier at light pressure
+@export var max_pressure_size_mult: float = 2.0 # Maximum size multiplier at full pressure
 
 # --- Internal State ---
 var coordinator_ref # Reference to the painting_coordinator
