@@ -133,7 +133,7 @@ func _ready():
 	pencil_layer_sprite.centered = false
 
 	# --- DEBUG PURPOSE APPLYING CUSTOM SHADER FOR WATER LAYER ---
-	var shader = load("res://trial3/water_debug_shader.gdshader")
+	var shader = load("res://trial3/water_debug_shader_v3.gdshader")
 	var shader_material = ShaderMaterial.new()
 	shader_material.shader = shader
 	water_layer_sprite.material = shader_material

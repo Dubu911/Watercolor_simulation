@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Water Color Sim"
-run/main_scene="uid://85daioa5j7k0"
+run/main_scene="res://trial4/main4.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
 config/icon="res://icon.svg"
 
