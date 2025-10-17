@@ -2,16 +2,23 @@
 extends Node
 
 # --- SIMULATION CONSTANTS ---
+# Water related
 @export var S: float = 0.10 # Surface tension coefficient
 @export var SP: float = 0.50 # Spread force coefficient
-@export var DIFFUSION_RATE: float = 0.1  # pigment diffusion speed (0.01 .. 0.5)
+@export var canceling_power: float = 0.6747  # How much outflow is reduced when pushing against recent inflow (0.0 .. 1.0)
+@export var acceleration_power: float = 0.1536  # How much outflow is increased when pushing with momentum (0.0 .. 1.0)
 @export var EVAPORATION_CONST: float = 0.01  # water evaporation rate (0.001 .. 0.05)
 @export var HOLD_THRESHOLD: float = 5.0 # The force needed to wet a dry pixel
+
+# Diffusion related
+@export var DIFFUSION_RATE: float = 0.1  # pigment diffusion speed (0.01 .. 0.5)
+@export var diffusion_limiter: float = 0.25  # max fraction of pigment that can diffuse per neighbor per frame (0.1 .. 0.5)
 @export var k_deposit_base: float = 1.0  # overall deposition speed (0.3..3.0)
 @export var w_scale: float = 0.2        # water scale (≈ how much water feels "wet"); 0.05 .. 0.3
-@export var diffusion_limiter: float = 0.25  # max fraction of pigment that can diffuse per neighbor per frame (0.1 .. 0.5)
+
+# Internal variables 
 const DRY_PIXEL_LIMIT = 0.0001 # Any water amount below this is considered "dry"
-const ENERGY_LOSS_ON_REDISTRIBUTION = 0.5 # How much energy is lost when flow is redirected
+const ENERGY_LOSS_ON_REDISTRIBUTION = 0.3 # How much energy is lost when flow is redirected
 const K_ABSORPTION = 0.5 # Higher numbers make the paint more opaque, faster.
 const EPS_A = 1e-6 # avoid log(0)
 
@@ -29,43 +36,46 @@ var static_read: Image
 var static_write: Image
 var absorbency_map: Image
 var displacement_map: Image
+var inertia_read: Image
+var inertia_write: Image
 
 # Fine tunning purpose
 # A flag to prevent spamming the print statement
 var values_changed_this_frame := false
 # --- FUNCTION FOR LIVE TUNING ---
 func _process(delta: float):
-	var change_speed = 0.01 * delta # How fast the values change
+	var change_speed = 0.1 * delta # How fast the values change
 	values_changed_this_frame = false
-	# --- Controls for Surface Tension (S) ---
+	# --- Controls for Canceling Power ---
 	if Input.is_key_pressed(KEY_R):
-		S += change_speed
+		canceling_power += change_speed
 		values_changed_this_frame = true
 	if Input.is_key_pressed(KEY_F):
-		S -= change_speed
+		canceling_power -= change_speed
 		values_changed_this_frame = true
-	# --- Controls for Spreading Force (SP) ---
+	# --- Controls for Acceleration Power ---
 	if Input.is_key_pressed(KEY_T):
-		SP += change_speed
+		acceleration_power += change_speed
 		values_changed_this_frame = true
 	if Input.is_key_pressed(KEY_G):
-		SP -= change_speed
+		acceleration_power -= change_speed
 		values_changed_this_frame = true
-		
-	# Ensure values don't go below zero
-	S = max(0.0, S)
-	SP = max(0.0, SP)
+
+	# Clamp momentum powers to 0-1 range
+	canceling_power = clamp(canceling_power, 0.0, 1.0)
+	acceleration_power = clamp(acceleration_power, 0.0, 1.0)
 
 	# Print the new values to the console only if they changed
 	if values_changed_this_frame:
-		print("Surface Tension (S): %.4f | Spreading Force (SP): %.4f" % [S, SP])
+		print("Canceling Power: %.4f | Acceleration Power: %.4f" % [canceling_power, acceleration_power])
 
 
-func init(p_width: int, p_height: int, p_water_read: Image, p_mobile_read: Image, p_water_write: Image,  
-		  p_mobile_write: Image, p_static_read: Image, p_static_write: Image, p_absorbency: Image, p_displacement: Image):
+func init(p_width: int, p_height: int, p_water_read: Image, p_mobile_read: Image, p_water_write: Image,
+		  p_mobile_write: Image, p_static_read: Image, p_static_write: Image, p_absorbency: Image, p_displacement: Image,
+		  p_inertia_read: Image, p_inertia_write: Image):
 	canvas_width = p_width
 	canvas_height = p_height
-	
+
 	water_read = p_water_read
 	water_write = p_water_write
 	mobile_read = p_mobile_read
@@ -74,20 +84,24 @@ func init(p_width: int, p_height: int, p_water_read: Image, p_mobile_read: Image
 	static_write = p_static_write
 	absorbency_map = p_absorbency
 	displacement_map = p_displacement
+	inertia_read = p_inertia_read
+	inertia_write = p_inertia_write
 	
 func run_simulation_step(delta: float, g_x: float, g_y: float):
 	# step 1, evaporation on the water layer
 	_simulate_evaporation(delta)
 	_swap_water_buffers()
-	
+
 	# step 2, water fluid simulation considering gravity, surface tension and spreading force
 	_calculate_water_displacement_4_dir_redistribution(g_x, g_y)
-	
+
 	# step 3, execute water movement based on step 3 information as well as pigment carried with the water.
+	# This also records inflow information into inertia_write
 	_apply_water_displacement_with_pigment_inflow(delta)
 
 	_swap_water_buffers()
 	_swap_mobile_buffers()
+	_swap_inertia_buffers()  # Swap inertia after recording inflows
 
 	# step 4, surface diffusion on the mobile layer (happens before deposition)
 	_simulate_diffusion(delta) # pigment diffuses on the wet surface based on contact area
@@ -102,7 +116,7 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 
 # --- PRIVATE SIMULATION FUNCTIONS ---
 # This functions is used in run_simulation_step to swap read, write buffers after physics calculation
-func _swap_water_buffers():	
+func _swap_water_buffers():
 	var temp_water = water_read
 	water_read = water_write
 	water_write = temp_water
@@ -111,11 +125,16 @@ func _swap_mobile_buffers():
 	var temp_mobile = mobile_read
 	mobile_read = mobile_write
 	mobile_write = temp_mobile
-	
+
 func _swap_static_buffers():
 	var temp_static = static_read
 	static_read = static_write
 	static_write = temp_static
+
+func _swap_inertia_buffers():
+	var temp_inertia = inertia_read
+	inertia_read = inertia_write
+	inertia_write = temp_inertia
 
 # Calculate water displacement in regards to gravity, surface tension and spreading force
 func _calculate_water_displacement_4_dir_redistribution(g_x: float, g_y: float):
@@ -231,7 +250,7 @@ func _calculate_water_displacement_4_dir_redistribution(g_x: float, g_y: float):
 				final_l *= amplification
 				final_d *= amplification
 				final_u *= amplification
-
+				
 			# Store x,y directional force
 			displacement_map.set_pixel(x, y, Color(final_r, final_l, final_d, final_u))
 
@@ -240,6 +259,7 @@ func _calculate_water_displacement_4_dir_redistribution(g_x: float, g_y: float):
 func _apply_water_displacement_with_pigment_inflow(delta: float):
 	water_write.fill(Color(0,0,0,0))
 	mobile_write.fill(Color(1,1,1,0))
+	inertia_write.fill(Color(0,0,0,0))  # Clear inertia memory for this frame
 
 	for y in range(canvas_height):
 		for x in range(canvas_width):
@@ -249,20 +269,9 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 			var capacity_at_source = absorbency_map.get_pixel(x, y).r
 			var movable_water_at_source = max(0.0, water_at_source - capacity_at_source)
 
-			var displacement_here = displacement_map.get_pixel(x, y)
-			var outflow_right_wanted = max(0.0, displacement_here.r) * movable_water_at_source * delta
-			var outflow_left_wanted  = max(0.0, displacement_here.g) * movable_water_at_source * delta
-			var outflow_down_wanted  = max(0.0, displacement_here.b) * movable_water_at_source * delta
-			var outflow_up_wanted    = max(0.0, displacement_here.a) * movable_water_at_source * delta
-
-			var total_outflow_wanted = outflow_right_wanted + outflow_left_wanted + outflow_down_wanted + outflow_up_wanted
-			if total_outflow_wanted > movable_water_at_source and total_outflow_wanted > 0.0:
-				var scale_factor = movable_water_at_source / total_outflow_wanted
-				outflow_right_wanted *= scale_factor
-				outflow_left_wanted  *= scale_factor
-				outflow_down_wanted  *= scale_factor
-				outflow_up_wanted    *= scale_factor
-				total_outflow_wanted  = movable_water_at_source
+			# Get scaled outflows using the helper function (avoiding code duplication)
+			var outflows_here = _final_outflows_at_with_inertia(x, y, delta)
+			var total_outflow_wanted = outflows_here.x + outflows_here.y + outflows_here.z + outflows_here.w
 
 			var water_staying_at_source = water_at_source - total_outflow_wanted
 
@@ -276,7 +285,7 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 				var absorbed_pigment_mass_at_source = pigment_mass_at_source - movable_pigment_mass_at_source
 
 				var outflow_fraction_of_movable = 0.0
-				if movable_water_at_source > 1e-6:
+				if movable_water_at_source > EPS_A:
 					outflow_fraction_of_movable = total_outflow_wanted / movable_water_at_source
 
 				var pigment_mass_that_flows_out = movable_pigment_mass_at_source * outflow_fraction_of_movable
@@ -295,12 +304,19 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 			var total_inflow_water = 0.0
 			var inflow_pigment_accum = Color(1, 1, 1, 0) # mass-preserving mix accumulator
 
+			# Initialize inertia accumulator for this pixel (will record inflows from 4 directions)
+			var inflow_from_right = 0.0
+			var inflow_from_left = 0.0
+			var inflow_from_down = 0.0
+			var inflow_from_up = 0.0
+
 			# from LEFT neighbor -> their RIGHT outflow lands here
 			if x > 0:
-				var neighbor_flows = _final_outflows_at(x - 1, y, delta)
+				var neighbor_flows = _final_outflows_at_with_inertia(x - 1, y, delta)
 				var water_in_from_left = neighbor_flows.x
 				if water_in_from_left > 0.0:
 					total_inflow_water += water_in_from_left
+					inflow_from_left = water_in_from_left  # Record for inertia memory
 
 					var neighbor_water = water_read.get_pixel(x - 1, y).r
 					var neighbor_capacity = absorbency_map.get_pixel(x - 1, y).r
@@ -312,15 +328,15 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var incoming_mass = neighbor_movable_mass * (water_in_from_left / max(neighbor_movable_water, 1e-6))
 
 					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
-					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
 					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
-					
+
 			# from RIGHT neighbor -> their LEFT outflow lands here
 			if x < canvas_width - 1:
-				var neighbor_flows = _final_outflows_at(x + 1, y, delta)
+				var neighbor_flows = _final_outflows_at_with_inertia(x + 1, y, delta)
 				var water_in_from_right = neighbor_flows.y
 				if water_in_from_right > 0.0:
 					total_inflow_water += water_in_from_right
+					inflow_from_right = water_in_from_right  # Record for inertia memory
 
 					var neighbor_water = water_read.get_pixel(x + 1, y).r
 					var neighbor_capacity = absorbency_map.get_pixel(x + 1, y).r
@@ -332,15 +348,15 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var incoming_mass = neighbor_movable_mass * (water_in_from_right / max(neighbor_movable_water, 1e-6))
 
 					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
-					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
 					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
 
 			# from UP neighbor -> their DOWN outflow lands here
 			if y > 0:
-				var neighbor_flows = _final_outflows_at(x, y - 1, delta)
+				var neighbor_flows = _final_outflows_at_with_inertia(x, y - 1, delta)
 				var water_in_from_up = neighbor_flows.z
 				if water_in_from_up > 0.0:
 					total_inflow_water += water_in_from_up
+					inflow_from_up = water_in_from_up  # Record for inertia memory
 
 					var neighbor_water = water_read.get_pixel(x, y - 1).r
 					var neighbor_capacity = absorbency_map.get_pixel(x, y - 1).r
@@ -352,15 +368,15 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var incoming_mass = neighbor_movable_mass * (water_in_from_up / max(neighbor_movable_water, 1e-6))
 
 					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
-					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
 					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
 
 			# from DOWN neighbor -> their UP outflow lands here
 			if y < canvas_height - 1:
-				var neighbor_flows = _final_outflows_at(x, y + 1, delta)
+				var neighbor_flows = _final_outflows_at_with_inertia(x, y + 1, delta)
 				var water_in_from_down = neighbor_flows.w
 				if water_in_from_down > 0.0:
 					total_inflow_water += water_in_from_down
+					inflow_from_down = water_in_from_down  # Record for inertia memory
 
 					var neighbor_water = water_read.get_pixel(x, y + 1).r
 					var neighbor_capacity = absorbency_map.get_pixel(x, y + 1).r
@@ -372,7 +388,6 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 					var incoming_mass = neighbor_movable_mass * (water_in_from_down / max(neighbor_movable_water, 1e-6))
 
 					var incoming_pigment_color = Color(neighbor_pigment.r, neighbor_pigment.g, neighbor_pigment.b, PigmentMixer._mass_to_alpha(incoming_mass))
-					#inflow_pigment_accum = _mix_pigments_with_mass_conversion(inflow_pigment_accum, incoming_pigment_color)
 					inflow_pigment_accum = PigmentMixer._mix_pigments_optical(inflow_pigment_accum, incoming_pigment_color)
 
 			# --- PART 3: finalize this pixel ---
@@ -381,6 +396,9 @@ func _apply_water_displacement_with_pigment_inflow(delta: float):
 
 			water_write.set_pixel(x, y, Color(final_water_at_pixel, 0, 0))
 			mobile_write.set_pixel(x, y, final_pigment_at_pixel)
+
+			# Write inertia memory for this pixel (RGBA = inflows from right, left, down, up)
+			inertia_write.set_pixel(x, y, Color(inflow_from_right, inflow_from_left, inflow_from_down, inflow_from_up))
 
 
 # --- HELPER FUNCTIONS ---
@@ -406,6 +424,91 @@ func _final_outflows_at(neighbor_x: int, neighbor_y: int, delta: float) -> Vecto
 	var outflow_down_wanted  = max(0.0, displacement_at_neighbor.b) * movable_water_at_neighbor * delta
 	var outflow_up_wanted    = max(0.0, displacement_at_neighbor.a) * movable_water_at_neighbor * delta
 
+	var total_outflow_wanted = outflow_right_wanted + outflow_left_wanted + outflow_down_wanted + outflow_up_wanted
+	if total_outflow_wanted > movable_water_at_neighbor and total_outflow_wanted > 0.0:
+		var scale_factor = movable_water_at_neighbor / total_outflow_wanted
+		outflow_right_wanted *= scale_factor
+		outflow_left_wanted  *= scale_factor
+		outflow_down_wanted  *= scale_factor
+		outflow_up_wanted    *= scale_factor
+
+	return Vector4(outflow_right_wanted, outflow_left_wanted, outflow_down_wanted, outflow_up_wanted)
+
+
+# Computes a neighbor pixel's FINAL, SCALED directional outflows WITH MOMENTUM DAMPENING.
+# This version applies inertia memory to reduce oscillation by dampening outflows that push
+# against recent inflows (and optionally boosting flows that align with momentum).
+# Returns a Vector4: (outflow_right, outflow_left, outflow_down, outflow_up).
+#
+# Uses inertia_read buffer where RGBA stores (inflow_from_right, inflow_from_left, inflow_from_down, inflow_from_up)
+# from the previous frame. These represent how much water this pixel RECEIVED from each direction.
+func _final_outflows_at_with_inertia(neighbor_x: int, neighbor_y: int, delta: float) -> Vector4:
+	if neighbor_x < 0 or neighbor_x >= canvas_width or neighbor_y < 0 or neighbor_y >= canvas_height:
+		return Vector4(0, 0, 0, 0)
+
+	var water_at_neighbor = water_read.get_pixel(neighbor_x, neighbor_y).r
+	if water_at_neighbor <= DRY_PIXEL_LIMIT:
+		return Vector4(0, 0, 0, 0)
+
+	var capacity_at_neighbor = absorbency_map.get_pixel(neighbor_x, neighbor_y).r
+	var movable_water_at_neighbor = max(0.0, water_at_neighbor - capacity_at_neighbor)
+	if movable_water_at_neighbor <= DRY_PIXEL_LIMIT:
+		return Vector4(0, 0, 0, 0)
+
+	# Calculate raw outflows from displacement forces (BEFORE scaling)
+	var displacement_at_neighbor = displacement_map.get_pixel(neighbor_x, neighbor_y)
+
+	var outflow_right_wanted = max(0.0, displacement_at_neighbor.r) * movable_water_at_neighbor * delta
+	var outflow_left_wanted  = max(0.0, displacement_at_neighbor.g) * movable_water_at_neighbor * delta
+	var outflow_down_wanted  = max(0.0, displacement_at_neighbor.b) * movable_water_at_neighbor * delta
+	var outflow_up_wanted    = max(0.0, displacement_at_neighbor.a) * movable_water_at_neighbor * delta
+
+	# --- APPLY MOMENTUM DAMPENING (before conservation scaling) ---
+	# Read inertia memory: how much water this pixel received from each direction last frame
+	var inertia_here = inertia_read.get_pixel(neighbor_x, neighbor_y)
+	var inflow_from_right = inertia_here.r  # Water received from the right (flowing leftward into this pixel)
+	var inflow_from_left = inertia_here.g   # Water received from the left (flowing rightward into this pixel)
+	var inflow_from_down = inertia_here.b   # Water received from below (flowing upward into this pixel)
+	var inflow_from_up = inertia_here.a     # Water received from above (flowing downward into this pixel)
+
+	# Apply canceling: If trying to push water RIGHT, but recently received water FROM the right, dampen it
+	if inflow_from_right > 0.0:
+		var cancel_amount = min(outflow_right_wanted, inflow_from_right) * canceling_power
+		outflow_right_wanted -= cancel_amount
+	elif acceleration_power > 0.0 and inflow_from_left > 0.0:
+		# Boost rightward flow if we have leftward momentum (received from left)
+		var boost_amount = min(outflow_right_wanted, inflow_from_left) * acceleration_power
+		outflow_right_wanted += boost_amount
+
+	# Apply canceling for LEFT outflow vs inflow from left
+	if inflow_from_left > 0.0:
+		var cancel_amount = min(outflow_left_wanted, inflow_from_left) * canceling_power
+		outflow_left_wanted -= cancel_amount
+	elif acceleration_power > 0.0 and inflow_from_right > 0.0:
+		# Boost leftward flow if we have rightward momentum (received from right)
+		var boost_amount = min(outflow_left_wanted, inflow_from_right) * acceleration_power
+		outflow_left_wanted += boost_amount
+
+	# Apply canceling for DOWN outflow vs inflow from down
+	if inflow_from_down > 0.0:
+		var cancel_amount = min(outflow_down_wanted, inflow_from_down) * canceling_power
+		outflow_down_wanted -= cancel_amount
+	elif acceleration_power > 0.0 and inflow_from_up > 0.0:
+		# Boost downward flow if we have upward momentum (received from up)
+		var boost_amount = min(outflow_down_wanted, inflow_from_up) * acceleration_power
+		outflow_down_wanted += boost_amount
+
+	# Apply canceling for UP outflow vs inflow from up
+	if inflow_from_up > 0.0:
+		var cancel_amount = min(outflow_up_wanted, inflow_from_up) * canceling_power
+		outflow_up_wanted -= cancel_amount
+	elif acceleration_power > 0.0 and inflow_from_down > 0.0:
+		# Boost upward flow if we have downward momentum (received from down)
+		var boost_amount = min(outflow_up_wanted, inflow_from_down) * acceleration_power
+		outflow_up_wanted += boost_amount
+
+	# --- APPLY CONSERVATION SCALING (after momentum dampening) ---
+	# Now scale down proportionally if total outflow exceeds available movable water
 	var total_outflow_wanted = outflow_right_wanted + outflow_left_wanted + outflow_down_wanted + outflow_up_wanted
 	if total_outflow_wanted > movable_water_at_neighbor and total_outflow_wanted > 0.0:
 		var scale_factor = movable_water_at_neighbor / total_outflow_wanted
