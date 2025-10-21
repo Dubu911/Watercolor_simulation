@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cvrbkmpaai78d"
+path="res://.godot/imported/evaporation.glsl-dfec94affa5f9da983310cee8c2a44c9.res"
+
+[deps]
+
+source_file="res://trial4/shaders/evaporation.glsl"
+dest_files=["res://.godot/imported/evaporation.glsl-dfec94affa5f9da983310cee8c2a44c9.res"]
+
+[params]
+

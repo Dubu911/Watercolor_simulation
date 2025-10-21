@@ -34,6 +34,8 @@ var static_write_buffer: Image
 var pencil_image: Image
 var absorbency_map : Image
 var displacement_map : Image
+var inertia_read_buffer: Image
+var inertia_write_buffer: Image
 
 # --- Textures (The GPU version of the data for display) ---
 var background_texture: ImageTexture
@@ -123,6 +125,11 @@ func _ready():
 	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	displacement_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 
+	# Inertia memory buffers (store water inflows from 4 directions: right, left, down, up)
+	inertia_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
+	inertia_read_buffer.fill(Color(0, 0, 0, 0))
+	inertia_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
+
 	# Initialize the paper properties
 	_initialize_paper_properties()
 	
@@ -154,7 +161,9 @@ func _ready():
 								static_read_buffer,
 								static_write_buffer,
 								absorbency_map,
-								displacement_map)
+								displacement_map,
+								inertia_read_buffer,
+								inertia_write_buffer)
 								
 # The main simulation loop
 func _process(_delta: float):

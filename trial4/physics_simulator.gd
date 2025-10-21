@@ -86,7 +86,7 @@ func init(p_width: int, p_height: int, p_water_read: Image, p_mobile_read: Image
 	displacement_map = p_displacement
 	inertia_read = p_inertia_read
 	inertia_write = p_inertia_write
-	
+
 func run_simulation_step(delta: float, g_x: float, g_y: float):
 	# step 1, evaporation on the water layer
 	_simulate_evaporation(delta)
@@ -111,8 +111,7 @@ func run_simulation_step(delta: float, g_x: float, g_y: float):
 	_simulate_deposition(delta) # mobile_image -> static_image
 
 	_swap_mobile_buffers()
-	_swap_static_buffers()	
-	
+	_swap_static_buffers()
 
 # --- PRIVATE SIMULATION FUNCTIONS ---
 # This functions is used in run_simulation_step to swap read, write buffers after physics calculation
