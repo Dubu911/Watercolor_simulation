@@ -193,27 +193,494 @@ func _image_to_rgba32f_bytes(img: Image) -> PackedByteArray:
 
 # Load and compile compute shaders
 func _create_compute_pipelines() -> bool:
-	# TODO: Load shader files and create pipelines
-	# For now, return true (we'll implement shaders next)
-	print("Compute pipelines creation placeholder - shaders needed")
-	return true
+	# Helper function to load, compile, and create pipeline for one shader
+	var success = true
+
+	# 1. Evaporation shader
+	evaporation_shader = _compile_shader("res://trial4/shaders/evaporation.glsl", "Evaporation")
+	if not evaporation_shader.is_valid():
+		success = false
+	else:
+		evaporation_pipeline = rd.compute_pipeline_create(evaporation_shader)
+		print("✓ Evaporation shader compiled")
+
+	# 2. Displacement shader
+	displacement_shader = _compile_shader("res://trial4/shaders/calculate_displacement.glsl", "Displacement")
+	if not displacement_shader.is_valid():
+		success = false
+	else:
+		displacement_pipeline = rd.compute_pipeline_create(displacement_shader)
+		print("✓ Displacement shader compiled")
+
+	# 3. Inflow shader
+	inflow_shader = _compile_shader("res://trial4/shaders/apply_inflow.glsl", "Inflow")
+	if not inflow_shader.is_valid():
+		success = false
+	else:
+		inflow_pipeline = rd.compute_pipeline_create(inflow_shader)
+		print("✓ Inflow shader compiled")
+
+	# 4. Diffusion shader
+	diffusion_shader = _compile_shader("res://trial4/shaders/diffusion.glsl", "Diffusion")
+	if not diffusion_shader.is_valid():
+		success = false
+	else:
+		diffusion_pipeline = rd.compute_pipeline_create(diffusion_shader)
+		print("✓ Diffusion shader compiled")
+
+	# 5. Deposition shader
+	deposition_shader = _compile_shader("res://trial4/shaders/deposition.glsl", "Deposition")
+	if not deposition_shader.is_valid():
+		success = false
+	else:
+		deposition_pipeline = rd.compute_pipeline_create(deposition_shader)
+		print("✓ Deposition shader compiled")
+
+	if success:
+		print("All compute shaders compiled successfully")
+	else:
+		printerr("Some shaders failed to compile!")
+
+	return success
+
+# Helper: Load and compile a single shader
+func _compile_shader(path: String, name: String) -> RID:
+	# Load shader source
+	if not FileAccess.file_exists(path):
+		printerr("Shader file not found: ", path)
+		return RID()
+
+	var shader_file = FileAccess.open(path, FileAccess.READ)
+	if not shader_file:
+		printerr("Failed to open shader file: ", path)
+		return RID()
+
+	var shader_source = shader_file.get_as_text()
+	shader_file.close()
+
+	# Create shader source object
+	var shader_src := RDShaderSource.new()
+	shader_src.source_compute = shader_source
+	shader_src.language = RenderingDevice.SHADER_LANGUAGE_GLSL
+
+	# Compile to SPIR-V
+	var spirv := rd.shader_compile_spirv_from_source(shader_src)
+
+	# Check for compilation errors
+	if spirv.compile_error_compute != "":
+		printerr("=== ", name, " Shader Compilation Error ===")
+		printerr(spirv.compile_error_compute)
+		printerr("==========================================")
+		return RID()
+
+	# Create shader from SPIR-V
+	var shader_rid := rd.shader_create_from_spirv(spirv)
+	if not shader_rid.is_valid():
+		printerr("Failed to create shader RID for: ", name)
+		return RID()
+
+	return shader_rid
 
 # Create uniform sets (bind textures to shader bindings)
 func _create_uniform_sets() -> bool:
-	# TODO: Create uniform sets for each shader
-	print("Uniform sets creation placeholder")
+	_create_evaporation_uniform_set()
+	_create_displacement_uniform_set()
+	_create_inflow_uniform_set()
+	_create_diffusion_uniform_set()
+	_create_deposition_uniform_set()
+
+	print("All uniform sets created successfully")
 	return true
+
+# Evaporation shader: 2 bindings (water_read, water_write)
+func _create_evaporation_uniform_set():
+	if evaporation_uniform_set.is_valid():
+		rd.free_rid(evaporation_uniform_set)
+
+	var uniforms := []
+
+	# Binding 0: water_read
+	var u0 := RDUniform.new()
+	u0.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u0.binding = 0
+	u0.add_id(water_read_tex)
+	uniforms.append(u0)
+
+	# Binding 1: water_write
+	var u1 := RDUniform.new()
+	u1.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u1.binding = 1
+	u1.add_id(water_write_tex)
+	uniforms.append(u1)
+
+	evaporation_uniform_set = rd.uniform_set_create(uniforms, evaporation_shader, 0)
+
+# Displacement shader: 2 bindings (water_read, displacement_map)
+func _create_displacement_uniform_set():
+	if displacement_uniform_set.is_valid():
+		rd.free_rid(displacement_uniform_set)
+
+	var uniforms := []
+
+	# Binding 0: water_read
+	var u0 := RDUniform.new()
+	u0.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u0.binding = 0
+	u0.add_id(water_read_tex)
+	uniforms.append(u0)
+
+	# Binding 1: displacement_map
+	var u1 := RDUniform.new()
+	u1.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u1.binding = 1
+	u1.add_id(displacement_tex)
+	uniforms.append(u1)
+
+	displacement_uniform_set = rd.uniform_set_create(uniforms, displacement_shader, 0)
+
+# Inflow shader: 8 bindings (water, mobile, absorbency, displacement, inertia)
+func _create_inflow_uniform_set():
+	if inflow_uniform_set.is_valid():
+		rd.free_rid(inflow_uniform_set)
+
+	var uniforms := []
+
+	# Binding 0: water_read
+	var u0 := RDUniform.new()
+	u0.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u0.binding = 0
+	u0.add_id(water_read_tex)
+	uniforms.append(u0)
+
+	# Binding 1: water_write
+	var u1 := RDUniform.new()
+	u1.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u1.binding = 1
+	u1.add_id(water_write_tex)
+	uniforms.append(u1)
+
+	# Binding 2: mobile_read
+	var u2 := RDUniform.new()
+	u2.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u2.binding = 2
+	u2.add_id(mobile_read_tex)
+	uniforms.append(u2)
+
+	# Binding 3: mobile_write
+	var u3 := RDUniform.new()
+	u3.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u3.binding = 3
+	u3.add_id(mobile_write_tex)
+	uniforms.append(u3)
+
+	# Binding 4: absorbency_map
+	var u4 := RDUniform.new()
+	u4.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u4.binding = 4
+	u4.add_id(absorbency_tex)
+	uniforms.append(u4)
+
+	# Binding 5: displacement_map
+	var u5 := RDUniform.new()
+	u5.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u5.binding = 5
+	u5.add_id(displacement_tex)
+	uniforms.append(u5)
+
+	# Binding 6: inertia_read
+	var u6 := RDUniform.new()
+	u6.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u6.binding = 6
+	u6.add_id(inertia_read_tex)
+	uniforms.append(u6)
+
+	# Binding 7: inertia_write
+	var u7 := RDUniform.new()
+	u7.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u7.binding = 7
+	u7.add_id(inertia_write_tex)
+	uniforms.append(u7)
+
+	inflow_uniform_set = rd.uniform_set_create(uniforms, inflow_shader, 0)
+
+# Diffusion shader: 3 bindings (water_read, mobile_read, mobile_write)
+func _create_diffusion_uniform_set():
+	if diffusion_uniform_set.is_valid():
+		rd.free_rid(diffusion_uniform_set)
+
+	var uniforms := []
+
+	# Binding 0: water_read
+	var u0 := RDUniform.new()
+	u0.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u0.binding = 0
+	u0.add_id(water_read_tex)
+	uniforms.append(u0)
+
+	# Binding 1: mobile_read
+	var u1 := RDUniform.new()
+	u1.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u1.binding = 1
+	u1.add_id(mobile_read_tex)
+	uniforms.append(u1)
+
+	# Binding 2: mobile_write
+	var u2 := RDUniform.new()
+	u2.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u2.binding = 2
+	u2.add_id(mobile_write_tex)
+	uniforms.append(u2)
+
+	diffusion_uniform_set = rd.uniform_set_create(uniforms, diffusion_shader, 0)
+
+# Deposition shader: 6 bindings (water, mobile, static, absorbency)
+func _create_deposition_uniform_set():
+	if deposition_uniform_set.is_valid():
+		rd.free_rid(deposition_uniform_set)
+
+	var uniforms := []
+
+	# Binding 0: water_read
+	var u0 := RDUniform.new()
+	u0.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u0.binding = 0
+	u0.add_id(water_read_tex)
+	uniforms.append(u0)
+
+	# Binding 1: mobile_read
+	var u1 := RDUniform.new()
+	u1.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u1.binding = 1
+	u1.add_id(mobile_read_tex)
+	uniforms.append(u1)
+
+	# Binding 2: mobile_write
+	var u2 := RDUniform.new()
+	u2.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u2.binding = 2
+	u2.add_id(mobile_write_tex)
+	uniforms.append(u2)
+
+	# Binding 3: static_read
+	var u3 := RDUniform.new()
+	u3.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u3.binding = 3
+	u3.add_id(static_read_tex)
+	uniforms.append(u3)
+
+	# Binding 4: static_write
+	var u4 := RDUniform.new()
+	u4.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u4.binding = 4
+	u4.add_id(static_write_tex)
+	uniforms.append(u4)
+
+	# Binding 5: absorbency_map
+	var u5 := RDUniform.new()
+	u5.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u5.binding = 5
+	u5.add_id(absorbency_tex)
+	uniforms.append(u5)
+
+	deposition_uniform_set = rd.uniform_set_create(uniforms, deposition_shader, 0)
 
 # Run simulation step on GPU
 func run_simulation_step_gpu(delta: float, g_x: float, g_y: float):
-	# TODO: Dispatch compute shaders
-	# 1. Evaporation
-	# 2. Calculate displacement
-	# 3. Apply displacement with inflow
-	# 4. Diffusion
-	# 5. Deposition
-	# 6. Swap texture references
-	pass
+	# Calculate work group dispatch size (8x8 work groups)
+	var groups_x = int(ceil(float(canvas_width) / 8.0))
+	var groups_y = int(ceil(float(canvas_height) / 8.0))
+
+	# Step 1: Evaporation (water_read → water_write)
+	_dispatch_evaporation(groups_x, groups_y, delta)
+	_swap_water_textures()
+
+	# Step 2: Calculate displacement forces (water_read → displacement_map)
+	_dispatch_displacement(groups_x, groups_y, g_x, g_y)
+
+	# Step 3: Apply displacement with inflow + momentum (reads all, writes water/mobile/inertia)
+	_dispatch_inflow(groups_x, groups_y, delta)
+	_swap_water_textures()
+	_swap_mobile_textures()
+	_swap_inertia_textures()
+
+	# Step 4: Diffusion (mobile_read → mobile_write)
+	_dispatch_diffusion(groups_x, groups_y, delta)
+	_swap_mobile_textures()
+
+	# Step 5: Deposition (mobile/static_read → mobile/static_write)
+	_dispatch_deposition(groups_x, groups_y, delta)
+	_swap_mobile_textures()
+	_swap_static_textures()
+
+# Dispatch evaporation shader
+func _dispatch_evaporation(groups_x: int, groups_y: int, delta: float):
+	var compute_list = rd.compute_list_begin()
+
+	# Bind pipeline and uniform set
+	rd.compute_list_bind_compute_pipeline(compute_list, evaporation_pipeline)
+	rd.compute_list_bind_uniform_set(compute_list, evaporation_uniform_set, 0)
+
+	# Pack push constants
+	var params = PackedFloat32Array([
+		delta,
+		EVAPORATION_CONST,
+		DRY_PIXEL_LIMIT,
+		float(canvas_width),
+		float(canvas_height)
+	])
+	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
+
+	# Dispatch
+	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
+	rd.compute_list_end()
+
+	# Submit and wait
+	rd.submit()
+	rd.sync()
+
+# Dispatch displacement calculation shader
+func _dispatch_displacement(groups_x: int, groups_y: int, g_x: float, g_y: float):
+	var compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_compute_pipeline(compute_list, displacement_pipeline)
+	rd.compute_list_bind_uniform_set(compute_list, displacement_uniform_set, 0)
+
+	# Pack push constants
+	var params = PackedFloat32Array([
+		g_x,
+		g_y,
+		S,
+		SP,
+		HOLD_THRESHOLD,
+		ENERGY_LOSS_ON_REDISTRIBUTION,
+		DRY_PIXEL_LIMIT,
+		float(canvas_width),
+		float(canvas_height)
+	])
+	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
+
+	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
+	rd.compute_list_end()
+
+	rd.submit()
+	rd.sync()
+
+# Dispatch inflow shader (with momentum)
+func _dispatch_inflow(groups_x: int, groups_y: int, delta: float):
+	var compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_compute_pipeline(compute_list, inflow_pipeline)
+	rd.compute_list_bind_uniform_set(compute_list, inflow_uniform_set, 0)
+
+	# Pack push constants
+	var params = PackedFloat32Array([
+		delta,
+		canceling_power,
+		acceleration_power,
+		DRY_PIXEL_LIMIT,
+		K_ABSORPTION,
+		EPS_A,
+		float(canvas_width),
+		float(canvas_height)
+	])
+	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
+
+	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
+	rd.compute_list_end()
+
+	rd.submit()
+	rd.sync()
+
+# Dispatch diffusion shader
+func _dispatch_diffusion(groups_x: int, groups_y: int, delta: float):
+	var compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_compute_pipeline(compute_list, diffusion_pipeline)
+	rd.compute_list_bind_uniform_set(compute_list, diffusion_uniform_set, 0)
+
+	# Pack push constants
+	var params = PackedFloat32Array([
+		delta,
+		DIFFUSION_RATE,
+		diffusion_limiter,
+		DRY_PIXEL_LIMIT,
+		K_ABSORPTION,
+		EPS_A,
+		float(canvas_width),
+		float(canvas_height)
+	])
+	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
+
+	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
+	rd.compute_list_end()
+
+	rd.submit()
+	rd.sync()
+
+# Dispatch deposition shader
+func _dispatch_deposition(groups_x: int, groups_y: int, delta: float):
+	var compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_compute_pipeline(compute_list, deposition_pipeline)
+	rd.compute_list_bind_uniform_set(compute_list, deposition_uniform_set, 0)
+
+	# Pack push constants
+	var params = PackedFloat32Array([
+		delta,
+		k_deposit_base,
+		w_scale,
+		DRY_PIXEL_LIMIT,
+		K_ABSORPTION,
+		EPS_A,
+		float(canvas_width),
+		float(canvas_height)
+	])
+	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
+
+	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
+	rd.compute_list_end()
+
+	rd.submit()
+	rd.sync()
+
+# Texture swapping functions (Solution A: recreate uniform sets)
+func _swap_water_textures():
+	var temp = water_read_tex
+	water_read_tex = water_write_tex
+	water_write_tex = temp
+
+	# Recreate uniform sets that use water textures
+	_create_evaporation_uniform_set()
+	_create_displacement_uniform_set()
+	_create_inflow_uniform_set()
+	_create_diffusion_uniform_set()
+	_create_deposition_uniform_set()
+
+func _swap_mobile_textures():
+	var temp = mobile_read_tex
+	mobile_read_tex = mobile_write_tex
+	mobile_write_tex = temp
+
+	# Recreate uniform sets that use mobile textures
+	_create_inflow_uniform_set()
+	_create_diffusion_uniform_set()
+	_create_deposition_uniform_set()
+
+func _swap_static_textures():
+	var temp = static_read_tex
+	static_read_tex = static_write_tex
+	static_write_tex = temp
+
+	# Recreate uniform set that uses static textures
+	_create_deposition_uniform_set()
+
+func _swap_inertia_textures():
+	var temp = inertia_read_tex
+	inertia_read_tex = inertia_write_tex
+	inertia_write_tex = temp
+
+	# Recreate uniform set that uses inertia textures
+	_create_inflow_uniform_set()
 
 # Upload paint data from CPU to GPU (for brush strokes)
 func upload_paint_region(x: int, y: int, water_data: Image, pigment_data: Image):

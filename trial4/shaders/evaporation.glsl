@@ -1,4 +1,3 @@
-#[compute]
 #version 450
 
 // Evaporation compute shader

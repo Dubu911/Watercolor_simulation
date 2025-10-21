@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://bnuxkxt0q5jwb"
+path="res://.godot/imported/calculate_displacement.glsl-9ca1c0793b2ba4622b5cc2878675f1a3.res"
+
+[deps]
+
+source_file="res://trial4/shaders/calculate_displacement.glsl"
+dest_files=["res://.godot/imported/calculate_displacement.glsl-9ca1c0793b2ba4622b5cc2878675f1a3.res"]
+
+[params]
+

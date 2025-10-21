@@ -1,4 +1,3 @@
-#[compute]
 #version 450
 
 // Apply water displacement with pigment transport (INFLOW MODEL)

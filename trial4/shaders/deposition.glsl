@@ -1,4 +1,3 @@
-#[compute]
 #version 450
 
 // Pigment deposition from mobile (wet) to static (dry) layer

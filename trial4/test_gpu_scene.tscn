@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3 uid="uid://m8xq6lajdnie"]
+
+[ext_resource type="Script" uid="uid://cos4qs06akyid" path="res://trial4/test_gpu_simulator.gd" id="1"]
+[ext_resource type="Script" uid="uid://dlbw47gs72ed5" path="res://trial4/physics_simulator_gpu.gd" id="2"]
+
+[node name="TestGPU" type="Node"]
+script = ExtResource("1")
+
+[node name="physics_simulator_gpu" type="Node" parent="."]
+script = ExtResource("2")

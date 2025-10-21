@@ -1,4 +1,3 @@
-#[compute]
 #version 450
 
 // Calculate water displacement forces

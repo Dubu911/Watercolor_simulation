@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://j4dgrvdi0feg"
+path="res://.godot/imported/apply_inflow.glsl-dfc4800d928386f57da441b8af99d0ea.res"
+
+[deps]
+
+source_file="res://trial4/shaders/apply_inflow.glsl"
+dest_files=["res://.godot/imported/apply_inflow.glsl-dfc4800d928386f57da441b8af99d0ea.res"]
+
+[params]
+
