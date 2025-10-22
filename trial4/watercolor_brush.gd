@@ -132,8 +132,8 @@ func _paint_stroke_segment(from_pos: Vector2, to_pos: Vector2, pressure: float):
 	# Calculate distance and interpolation steps
 	var distance = from_pos.distance_to(to_pos)
 
-	# Step size - smaller for smoother strokes (25% of radius for good overlap)
-	var step_size = max(0.25, brush_radius * 0.25)
+	# Step size - optimized for performance (50% of radius = 2x overlap, still smooth)
+	var step_size = max(0.5, brush_radius * 0.5)
 	var steps = max(1, int(ceil(distance / step_size)))
 
 	# Paint at each interpolated point
@@ -142,29 +142,11 @@ func _paint_stroke_segment(from_pos: Vector2, to_pos: Vector2, pressure: float):
 		var paint_pos = from_pos.lerp(to_pos, t)
 		_paint_circular_dab(paint_pos, brush_radius)
 
-# Paint a circular dab at the given position
+# Paint a circular dab at the given position (GPU version)
 func _paint_circular_dab(center: Vector2, radius: float):
-	var i_radius = int(ceil(radius))
-
-	# Iterate over bounding box of the circle
-	for y_offset in range(-i_radius, i_radius + 1):
-		for x_offset in range(-i_radius, i_radius + 1):
-			# Check if point is inside circle
-			var distance = Vector2(x_offset, y_offset).length()
-			if distance <= radius:
-				var pixel_x = int(center.x + x_offset)
-				var pixel_y = int(center.y + y_offset)
-
-				# Check bounds
-				if pixel_x >= 0 and pixel_x < canvas_width and pixel_y >= 0 and pixel_y < canvas_height:
-					# Check stroke mask - only paint if not already painted
-					if not stroke_mask[pixel_y][pixel_x]:
-						_paint_pixel(pixel_x, pixel_y)
-						stroke_mask[pixel_y][pixel_x] = true
-
-# Paint a single pixel via coordinator
-func _paint_pixel(x: int, y: int):
-	if coordinator_ref.has_method("paint_watercolor_pixel"):
-		coordinator_ref.paint_watercolor_pixel(x, y, brush_color, water_amount, current_pressure)
+	# For GPU mode, we use add_paint_at which uploads a full circular dab at once
+	# This is more efficient than pixel-by-pixel updates
+	if coordinator_ref.has_method("add_paint_at"):
+		coordinator_ref.add_paint_at(center, brush_color, water_amount, radius, current_pressure)
 	else:
-		printerr("watercolor_brush ERROR: Coordinator missing 'paint_watercolor_pixel' method!")
+		printerr("watercolor_brush ERROR: Coordinator missing 'add_paint_at' method!")

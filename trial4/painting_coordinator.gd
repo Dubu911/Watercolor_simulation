@@ -1,9 +1,9 @@
-# painting_coordinator.gd (Corrected and with new add_paint_at function)
+# painting_coordinator.gd (GPU-accelerated version)
 extends Node
 
 # --- Canvas Properties ---
-const CANVAS_WIDTH := 64
-const CANVAS_HEIGHT := 64
+const CANVAS_WIDTH := 256
+const CANVAS_HEIGHT := 256
 const MAX_WATER_AMOUNT := 1.0
 
 @onready var physics_simulator = $physics_simulator
@@ -86,51 +86,20 @@ func _ready():
 		return
 
 	# 2. Initialize Images & Textures
-	# background the "paper", starts white
+	# Background the "paper", starts white
 	background_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
 	background_image.fill(Color.WHITE)
 	background_texture = ImageTexture.create_from_image(background_image)
 	background_sprite.texture = background_texture
 
-	# Water layer uses a floating-point format for precision
-	water_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
-	water_texture = ImageTexture.create_from_image(water_read_buffer)
-	water_layer_sprite.texture = water_texture
-	
-	water_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
-	
-	# Mobile layer is for wet pigment, starts transparent
-	mobile_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	mobile_read_buffer.fill(Color(1, 1, 1, 0))  # Fill with transparent white
-	mobile_texture = ImageTexture.create_from_image(mobile_read_buffer)
-	mobile_layer_sprite.texture = mobile_texture
-	
-	mobile_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	
-	# Static layer is the "paper", starts transparent
-	static_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	static_read_buffer.fill(Color(1, 1, 1, 0))
-	static_texture = ImageTexture.create_from_image(static_read_buffer)
-	static_layer_sprite.texture = static_texture
-	
-	static_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	
-	# The pencil layer starts transparent
+	# Pencil layer (CPU-based, stays on CPU)
 	pencil_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
 	pencil_image.fill(Color(0, 0, 0, 0))
 	pencil_texture = ImageTexture.create_from_image(pencil_image)
 	pencil_layer_sprite.texture = pencil_texture
-	
-	# Physics layers
+
+	# Initialize absorbency map (will be uploaded to GPU)
 	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
-	displacement_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-
-	# Inertia memory buffers (store water inflows from 4 directions: right, left, down, up)
-	inertia_read_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-	inertia_read_buffer.fill(Color(0, 0, 0, 0))
-	inertia_write_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
-
-	# Initialize the paper properties
 	_initialize_paper_properties()
 	
 	# All layers are centered = false to draw from top-left (0,0)
@@ -139,58 +108,41 @@ func _ready():
 	static_layer_sprite.centered = false
 	pencil_layer_sprite.centered = false
 
-	# --- DEBUG PURPOSE APPLYING CUSTOM SHADER FOR WATER LAYER ---
-	var shader = load("res://trial4/water_debug_shader.gdshader")
-	var shader_material = ShaderMaterial.new()
-	shader_material.shader = shader
-	water_layer_sprite.material = shader_material
-	
+	# Initialize GPU physics simulator
+	if physics_simulator:
+		var success = physics_simulator.init_gpu(CANVAS_WIDTH, CANVAS_HEIGHT, absorbency_map)
+		if not success:
+			printerr("Failed to initialize GPU physics simulator!")
+			return
+		print("GPU physics simulator initialized successfully")
+
+		# Set up GPU texture display (no CPU readback!)
+		_setup_gpu_texture_display()
+
 	# Start dirty for initial update
-	mark_watercolor_dirty()
 	mark_pencil_dirty()
 	_update_gravity_components()
-	
-	# Getting local variables ready in physics_simulator.gd
-	if physics_simulator:
-		physics_simulator.init(	CANVAS_WIDTH,
-								CANVAS_HEIGHT,
-								water_read_buffer,
-								mobile_read_buffer,
-								water_write_buffer,
-								mobile_write_buffer,
-								static_read_buffer,
-								static_write_buffer,
-								absorbency_map,
-								displacement_map,
-								inertia_read_buffer,
-								inertia_write_buffer)
 								
 # The main simulation loop
 func _process(_delta: float):
-	# --- Physics Simulations will go here in the future ---
-	physics_simulator.run_simulation_step(_delta, gravity_x, gravity_y)
-	water_read_buffer = physics_simulator.water_read
-	mobile_read_buffer = physics_simulator.mobile_read
-	mark_watercolor_dirty()
-	# --- Texture Updates ---
-	if _dirty_watercolor:
-		#--- for water fluid check. needs to be disabled for faster performance ---
-		if water_texture and water_read_buffer: water_texture.update(water_read_buffer)
-		
-		if mobile_texture and mobile_read_buffer: mobile_texture.update(mobile_read_buffer)
-		if static_texture and static_read_buffer: static_texture.update(static_read_buffer)
-		_dirty_watercolor = false
-	
+	# Run GPU physics simulation (no CPU readback!)
+	physics_simulator.run_simulation_step_gpu(_delta, gravity_x, gravity_y)
+
+	# GPU textures are automatically displayed via Texture2DRD
+	# No CPU readback needed!
+
+	# Only update pencil layer (CPU-based)
 	if _dirty_pencil:
 		if pencil_texture and pencil_image: pencil_texture.update(pencil_image)
 		_dirty_pencil = false
 
 
-# Paint a single pixel with watercolor (optical mixing + water limiting)
-# Called by watercolor_brush for each pixel in a stroke
-# Pigment transfer is now proportional to water transfer
-# Pressure allows concentrated pigment to diffuse into wet surfaces (wet-on-wet technique)
+# TODO Phase 5: Implement GPU paint upload
+# This function will need to be rewritten to upload paint data to GPU
+# For now, painting is disabled until Phase 5
 func paint_watercolor_pixel(x: int, y: int, color: Color, water: float, pressure: float = 1.0):
+	# TEMPORARILY DISABLED - needs GPU upload implementation
+	return
 	# Bounds check
 	if x < 0 or x >= CANVAS_WIDTH or y < 0 or y >= CANVAS_HEIGHT:
 		return
@@ -251,31 +203,52 @@ func paint_watercolor_pixel(x: int, y: int, color: Color, water: float, pressure
 
 	mark_watercolor_dirty()
 
-# LEGACY: Old multi-dab function (can be removed after testing new brush)
-func add_paint_at(pos: Vector2, color: Color, water: float, size: float):
-	var i_radius = int(size)
+# GPU-compatible paint upload (optimized - only upload affected region)
+func add_paint_at(pos: Vector2, color: Color, water: float, size: float, pressure: float = 1.0):
+	var i_radius = int(ceil(size))
+
+	# Calculate bounding box for this dab
+	var min_x = max(0, int(pos.x) - i_radius)
+	var max_x = min(CANVAS_WIDTH - 1, int(pos.x) + i_radius)
+	var min_y = max(0, int(pos.y) - i_radius)
+	var max_y = min(CANVAS_HEIGHT - 1, int(pos.y) + i_radius)
+
+	var region_width = max_x - min_x + 1
+	var region_height = max_y - min_y + 1
+
+	# Skip if completely out of bounds
+	if region_width <= 0 or region_height <= 0:
+		return
+
+	# Create CPU buffers ONLY for the affected region
+	var water_buffer = Image.create(region_width, region_height, false, Image.FORMAT_RF)
+	var pigment_buffer = Image.create(region_width, region_height, false, Image.FORMAT_RGBAF)
+
+	# Fill with zeros (no change)
+	water_buffer.fill(Color(0, 0, 0))
+	pigment_buffer.fill(Color(1, 1, 1, 0))  # Transparent white
+
+	# Paint the dab onto CPU buffers (in region-local coordinates)
 	for y_offset in range(-i_radius, i_radius + 1):
 		for x_offset in range(-i_radius, i_radius + 1):
 			if Vector2(x_offset, y_offset).length_squared() <= size * size:
-				var draw_x = int(pos.x + x_offset)
-				var draw_y = int(pos.y + y_offset)
+				var canvas_x = int(pos.x + x_offset)
+				var canvas_y = int(pos.y + y_offset)
 
-				if draw_x >= 0 and draw_x < CANVAS_WIDTH and draw_y >= 0 and draw_y < CANVAS_HEIGHT:
-					# --- Add water ---
-					var current_water = water_read_buffer.get_pixel(draw_x, draw_y).r
-					var new_water = min(MAX_WATER_AMOUNT, current_water + water)
-					water_read_buffer.set_pixel(draw_x, draw_y, Color(new_water, 0, 0))
-					
-					# --- Mix Pigment ---
-					var new_pigment_wash = color # The color from the brush
-					var existing_pigment_wash = mobile_read_buffer.get_pixel(draw_x, draw_y)
-					
-					# Use the new helper function to correctly mix the two washes
-					var final_mixed_color = PigmentMixer._mix_pigments_optical(new_pigment_wash, existing_pigment_wash)
-					
-					mobile_read_buffer.set_pixel(draw_x, draw_y, final_mixed_color)
+				# Check if within canvas bounds
+				if canvas_x >= min_x and canvas_x <= max_x and canvas_y >= min_y and canvas_y <= max_y:
+					# Convert to region-local coordinates
+					var region_x = canvas_x - min_x
+					var region_y = canvas_y - min_y
 
-	mark_watercolor_dirty()
+					# Add water
+					water_buffer.set_pixel(region_x, region_y, Color(water, 0, 0))
+
+					# Add pigment
+					pigment_buffer.set_pixel(region_x, region_y, color)
+
+	# Upload only the affected region to GPU with pressure
+	physics_simulator.upload_paint_region(min_x, min_y, water_buffer, pigment_buffer, pressure)
 	
 
 func draw_line_on_pencil_layer(from_pos: Vector2, to_pos: Vector2, color: Color, radius: float):
@@ -353,6 +326,48 @@ func _unhandled_input(_event: InputEvent):
 		# Print the new angles to the output log for debugging
 		print("Vertical Tilt: ", vertical_theta, " | Horizontal Tilt: ", horizontal_theta)
 
+func _setup_gpu_texture_display():
+	# Get RenderingDevice
+	var rd = RenderingServer.get_rendering_device()
+	if not rd:
+		printerr("Failed to get RenderingDevice for texture display!")
+		return
+
+	# Create Texture2DRD objects that directly display GPU textures (no CPU readback!)
+	# Water layer (for debugging)
+	var water_tex_rd = Texture2DRD.new()
+	water_tex_rd.texture_rd_rid = physics_simulator.get_water_texture()
+	water_layer_sprite.texture = water_tex_rd
+
+	# Apply water debug shader
+	var shader = load("res://trial4/water_debug_shader.gdshader")
+	var shader_material = ShaderMaterial.new()
+	shader_material.shader = shader
+	water_layer_sprite.material = shader_material
+
+	# Mobile layer (wet pigment)
+	var mobile_tex_rd = Texture2DRD.new()
+	mobile_tex_rd.texture_rd_rid = physics_simulator.get_mobile_texture()
+	mobile_layer_sprite.texture = mobile_tex_rd
+
+	# Apply pigment display shader to mobile layer
+	var pigment_shader = load("res://trial4/pigment_display_shader.gdshader")
+	var pigment_material = ShaderMaterial.new()
+	pigment_material.shader = pigment_shader
+	mobile_layer_sprite.material = pigment_material
+
+	# Static layer (dry pigment)
+	var static_tex_rd = Texture2DRD.new()
+	static_tex_rd.texture_rd_rid = physics_simulator.get_static_texture()
+	static_layer_sprite.texture = static_tex_rd
+
+	# Apply pigment display shader to static layer too
+	var static_pigment_material = ShaderMaterial.new()
+	static_pigment_material.shader = pigment_shader
+	static_layer_sprite.material = static_pigment_material
+
+	print("GPU texture display set up successfully (no CPU readback!)")
+
 func _update_gravity_components():
 	var h_rad = deg_to_rad(horizontal_theta)
 	var v_rad = deg_to_rad(vertical_theta)
@@ -369,8 +384,7 @@ func _initialize_paper_properties():
 			# the value is stored in the red channel.
 			absorbency_map.set_pixel(x, y, Color(random_absorbency, 0, 0))
 
-	# It's also a good idea to initialize the displacement map to zero here
-	displacement_map.fill(Color(0,0,0,0))
+	# Displacement map is now on GPU, initialized to zero in physics_simulator_gpu.gd
 
 func set_vertical_tilt(degrees: float):
 	vertical_theta = degrees
@@ -380,6 +394,7 @@ func set_horizontal_tilt(degrees: float):
 	horizontal_theta = degrees
 	_update_gravity_components()
 
+# No longer needed - GPU textures display automatically
 func mark_watercolor_dirty():
 	_dirty_watercolor = true
 

@@ -9,6 +9,28 @@ var is_panning: bool = false
 @export var max_zoom: float = 10.0    # Largest zoom value (most zoomed out)
 # ---------------------------------
 
+func _ready():
+	# Get canvas size from painting_coordinator
+	var painting_coordinator = get_node_or_null("../painting_coordinator")
+	if painting_coordinator:
+		var canvas_width = painting_coordinator.CANVAS_WIDTH
+		var canvas_height = painting_coordinator.CANVAS_HEIGHT
+
+		# Center camera on canvas
+		offset = Vector2(canvas_width / 2.0, canvas_height / 2.0)
+
+		# Set reasonable initial zoom based on canvas size
+		# Adjust zoom so canvas fits nicely on screen
+		var screen_size = get_viewport().get_visible_rect().size
+		var zoom_x = screen_size.x / canvas_width * 0.8
+		var zoom_y = screen_size.y / canvas_height * 0.8
+		var initial_zoom = min(zoom_x, zoom_y)
+		zoom = Vector2(initial_zoom, initial_zoom)
+	else:
+		# Fallback if coordinator not found
+		offset = Vector2(256, 256)
+		zoom = Vector2(2.0, 2.0)
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_MIDDLE:

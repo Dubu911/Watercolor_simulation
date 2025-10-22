@@ -38,6 +38,9 @@ var inertia_read_tex: RID
 var inertia_write_tex: RID
 var absorbency_tex: RID
 var displacement_tex: RID
+# Temporary paint buffers (for uploading brush strokes)
+var paint_water_tex: RID
+var paint_pigment_tex: RID
 
 # --- Compute Shader Pipeline RIDs ---
 var evaporation_shader: RID
@@ -50,6 +53,8 @@ var diffusion_shader: RID
 var diffusion_pipeline: RID
 var deposition_shader: RID
 var deposition_pipeline: RID
+var add_paint_shader: RID
+var add_paint_pipeline: RID
 
 # --- Uniform Sets (bind textures to shaders) ---
 var evaporation_uniform_set: RID
@@ -57,6 +62,7 @@ var displacement_uniform_set: RID
 var inflow_uniform_set: RID
 var diffusion_uniform_set: RID
 var deposition_uniform_set: RID
+var add_paint_uniform_set: RID
 
 # --- Live tuning ---
 var values_changed_this_frame := false
@@ -89,13 +95,13 @@ func init_gpu(p_width: int, p_height: int, absorbency_data: Image) -> bool:
 	canvas_width = p_width
 	canvas_height = p_height
 
-	# Get RenderingDevice
-	rd = RenderingServer.create_local_rendering_device()
+	# Get RenderingDevice (use global device for Texture2DRD compatibility)
+	rd = RenderingServer.get_rendering_device()
 	if not rd:
-		printerr("Failed to create RenderingDevice!")
+		printerr("Failed to get RenderingDevice!")
 		return false
 
-	print("GPU RenderingDevice created successfully")
+	print("GPU RenderingDevice acquired successfully")
 
 	# Create GPU textures
 	if not _create_textures(absorbency_data):
@@ -159,6 +165,10 @@ func _create_textures(absorbency_data: Image) -> bool:
 	inertia_read_tex = rd.texture_create(fmt_rgba32f, RDTextureView.new(), [empty_rgba32f_data.to_byte_array()])
 	inertia_write_tex = rd.texture_create(fmt_rgba32f, RDTextureView.new(), [empty_rgba32f_data.to_byte_array()])
 	displacement_tex = rd.texture_create(fmt_rgba32f, RDTextureView.new(), [empty_rgba32f_data.to_byte_array()])
+
+	# Create paint buffer textures (for adding paint via compute shader)
+	paint_water_tex = rd.texture_create(fmt_r32f, RDTextureView.new(), [empty_r32f_data.to_byte_array()])
+	paint_pigment_tex = rd.texture_create(fmt_rgba32f, RDTextureView.new(), [empty_rgba32f_data.to_byte_array()])
 
 	print("GPU textures created successfully")
 	return true
@@ -236,6 +246,14 @@ func _create_compute_pipelines() -> bool:
 		deposition_pipeline = rd.compute_pipeline_create(deposition_shader)
 		print("✓ Deposition shader compiled")
 
+	# 6. Add paint shader
+	add_paint_shader = _compile_shader("res://trial4/shaders/add_paint.glsl", "AddPaint")
+	if not add_paint_shader.is_valid():
+		success = false
+	else:
+		add_paint_pipeline = rd.compute_pipeline_create(add_paint_shader)
+		print("✓ Add paint shader compiled")
+
 	if success:
 		print("All compute shaders compiled successfully")
 	else:
@@ -288,6 +306,7 @@ func _create_uniform_sets() -> bool:
 	_create_inflow_uniform_set()
 	_create_diffusion_uniform_set()
 	_create_deposition_uniform_set()
+	_create_add_paint_uniform_set()
 
 	print("All uniform sets created successfully")
 	return true
@@ -484,6 +503,43 @@ func _create_deposition_uniform_set():
 
 	deposition_uniform_set = rd.uniform_set_create(uniforms, deposition_shader, 0)
 
+# Add paint shader: 4 bindings (paint_water, paint_pigment, water_buffer, mobile_buffer)
+func _create_add_paint_uniform_set():
+	if add_paint_uniform_set.is_valid():
+		rd.free_rid(add_paint_uniform_set)
+
+	var uniforms := []
+
+	# Binding 0: paint_water (readonly input)
+	var u0 := RDUniform.new()
+	u0.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u0.binding = 0
+	u0.add_id(paint_water_tex)
+	uniforms.append(u0)
+
+	# Binding 1: paint_pigment (readonly input)
+	var u1 := RDUniform.new()
+	u1.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u1.binding = 1
+	u1.add_id(paint_pigment_tex)
+	uniforms.append(u1)
+
+	# Binding 2: water_buffer (read+write)
+	var u2 := RDUniform.new()
+	u2.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u2.binding = 2
+	u2.add_id(water_read_tex)
+	uniforms.append(u2)
+
+	# Binding 3: mobile_buffer (read+write)
+	var u3 := RDUniform.new()
+	u3.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u3.binding = 3
+	u3.add_id(mobile_read_tex)
+	uniforms.append(u3)
+
+	add_paint_uniform_set = rd.uniform_set_create(uniforms, add_paint_shader, 0)
+
 # Run simulation step on GPU
 func run_simulation_step_gpu(delta: float, g_x: float, g_y: float):
 	# Calculate work group dispatch size (8x8 work groups)
@@ -520,13 +576,16 @@ func _dispatch_evaporation(groups_x: int, groups_y: int, delta: float):
 	rd.compute_list_bind_compute_pipeline(compute_list, evaporation_pipeline)
 	rd.compute_list_bind_uniform_set(compute_list, evaporation_uniform_set, 0)
 
-	# Pack push constants
+	# Pack push constants (aligned to 16 bytes)
 	var params = PackedFloat32Array([
 		delta,
 		EVAPORATION_CONST,
 		DRY_PIXEL_LIMIT,
 		float(canvas_width),
-		float(canvas_height)
+		float(canvas_height),
+		0.0,  # padding
+		0.0,  # padding
+		0.0   # padding (total: 8 floats = 32 bytes)
 	])
 	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
 
@@ -534,9 +593,7 @@ func _dispatch_evaporation(groups_x: int, groups_y: int, delta: float):
 	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
 	rd.compute_list_end()
 
-	# Submit and wait
-	rd.submit()
-	rd.sync()
+	# Note: submit/sync not needed with global RenderingDevice
 
 # Dispatch displacement calculation shader
 func _dispatch_displacement(groups_x: int, groups_y: int, g_x: float, g_y: float):
@@ -545,7 +602,7 @@ func _dispatch_displacement(groups_x: int, groups_y: int, g_x: float, g_y: float
 	rd.compute_list_bind_compute_pipeline(compute_list, displacement_pipeline)
 	rd.compute_list_bind_uniform_set(compute_list, displacement_uniform_set, 0)
 
-	# Pack push constants
+	# Pack push constants (aligned to 16 bytes)
 	var params = PackedFloat32Array([
 		g_x,
 		g_y,
@@ -555,15 +612,17 @@ func _dispatch_displacement(groups_x: int, groups_y: int, g_x: float, g_y: float
 		ENERGY_LOSS_ON_REDISTRIBUTION,
 		DRY_PIXEL_LIMIT,
 		float(canvas_width),
-		float(canvas_height)
+		float(canvas_height),
+		0.0,  # padding
+		0.0,  # padding
+		0.0   # padding (total: 12 floats = 48 bytes)
 	])
 	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
 
 	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
 	rd.compute_list_end()
 
-	rd.submit()
-	rd.sync()
+	# Note: submit/sync not needed with global RenderingDevice
 
 # Dispatch inflow shader (with momentum)
 func _dispatch_inflow(groups_x: int, groups_y: int, delta: float):
@@ -588,8 +647,7 @@ func _dispatch_inflow(groups_x: int, groups_y: int, delta: float):
 	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
 	rd.compute_list_end()
 
-	rd.submit()
-	rd.sync()
+	# Note: submit/sync not needed with global RenderingDevice
 
 # Dispatch diffusion shader
 func _dispatch_diffusion(groups_x: int, groups_y: int, delta: float):
@@ -614,8 +672,7 @@ func _dispatch_diffusion(groups_x: int, groups_y: int, delta: float):
 	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
 	rd.compute_list_end()
 
-	rd.submit()
-	rd.sync()
+	# Note: submit/sync not needed with global RenderingDevice
 
 # Dispatch deposition shader
 func _dispatch_deposition(groups_x: int, groups_y: int, delta: float):
@@ -640,8 +697,28 @@ func _dispatch_deposition(groups_x: int, groups_y: int, delta: float):
 	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
 	rd.compute_list_end()
 
-	rd.submit()
-	rd.sync()
+	# Note: submit/sync not needed with global RenderingDevice
+
+# Dispatch add_paint shader
+func _dispatch_add_paint(groups_x: int, groups_y: int, pressure: float):
+	var compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_compute_pipeline(compute_list, add_paint_pipeline)
+	rd.compute_list_bind_uniform_set(compute_list, add_paint_uniform_set, 0)
+
+	# Pack push constants (canvas_width, canvas_height, pressure, padding)
+	var params = PackedFloat32Array([
+		float(canvas_width),
+		float(canvas_height),
+		pressure,
+		0.0   # padding (total: 4 floats = 16 bytes)
+	])
+	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
+
+	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
+	rd.compute_list_end()
+
+	# Note: submit/sync not needed with global RenderingDevice
 
 # Texture swapping functions (Solution A: recreate uniform sets)
 func _swap_water_textures():
@@ -655,6 +732,7 @@ func _swap_water_textures():
 	_create_inflow_uniform_set()
 	_create_diffusion_uniform_set()
 	_create_deposition_uniform_set()
+	_create_add_paint_uniform_set()  # Also uses water_read_tex
 
 func _swap_mobile_textures():
 	var temp = mobile_read_tex
@@ -665,6 +743,7 @@ func _swap_mobile_textures():
 	_create_inflow_uniform_set()
 	_create_diffusion_uniform_set()
 	_create_deposition_uniform_set()
+	_create_add_paint_uniform_set()  # Also uses mobile_read_tex
 
 func _swap_static_textures():
 	var temp = static_read_tex
@@ -683,10 +762,76 @@ func _swap_inertia_textures():
 	_create_inflow_uniform_set()
 
 # Upload paint data from CPU to GPU (for brush strokes)
-func upload_paint_region(x: int, y: int, water_data: Image, pigment_data: Image):
-	# Upload small region to GPU textures
-	# This will be called when brush paints
-	pass
+# x, y = top-left corner of the region in canvas space
+# water_data, pigment_data = Images containing the region data
+func upload_paint_region(x: int, y: int, water_data: Image, pigment_data: Image, pressure: float = 1.0):
+	var region_width = water_data.get_width()
+	var region_height = water_data.get_height()
+
+	# Convert Images to GPU-compatible byte arrays
+	var water_bytes = _image_to_r32f_bytes(water_data)
+	var pigment_bytes = _image_to_rgba32f_bytes(pigment_data)
+
+	# Clear paint buffer textures first (fill with zeros)
+	var empty_water = PackedFloat32Array()
+	empty_water.resize(canvas_width * canvas_height)
+	empty_water.fill(0.0)
+
+	var empty_pigment = PackedFloat32Array()
+	empty_pigment.resize(canvas_width * canvas_height * 4)
+	for i in range(canvas_width * canvas_height):
+		empty_pigment[i * 4 + 0] = 1.0  # R
+		empty_pigment[i * 4 + 1] = 1.0  # G
+		empty_pigment[i * 4 + 2] = 1.0  # B
+		empty_pigment[i * 4 + 3] = 0.0  # A (transparent)
+
+	rd.texture_update(paint_water_tex, 0, empty_water.to_byte_array())
+	rd.texture_update(paint_pigment_tex, 0, empty_pigment.to_byte_array())
+
+	# Now upload the region data to the correct position
+	# We need to copy region data into full-size buffer at correct offset
+	var full_water = PackedFloat32Array()
+	full_water.resize(canvas_width * canvas_height)
+	full_water.fill(0.0)
+
+	var full_pigment = PackedFloat32Array()
+	full_pigment.resize(canvas_width * canvas_height * 4)
+	for i in range(canvas_width * canvas_height):
+		full_pigment[i * 4 + 0] = 1.0
+		full_pigment[i * 4 + 1] = 1.0
+		full_pigment[i * 4 + 2] = 1.0
+		full_pigment[i * 4 + 3] = 0.0
+
+	# Copy region data into full buffer at offset
+	for ry in range(region_height):
+		for rx in range(region_width):
+			var canvas_x = x + rx
+			var canvas_y = y + ry
+
+			if canvas_x >= 0 and canvas_x < canvas_width and canvas_y >= 0 and canvas_y < canvas_height:
+				var canvas_idx = canvas_y * canvas_width + canvas_x
+				var region_idx = ry * region_width + rx
+
+				# Copy water
+				var region_water_bytes = water_bytes.slice(region_idx * 4, region_idx * 4 + 4)
+				var region_water_value = region_water_bytes.decode_float(0)
+				full_water[canvas_idx] = region_water_value
+
+				# Copy pigment (RGBA)
+				var pigment_base = region_idx * 16  # 4 floats * 4 bytes each
+				full_pigment[canvas_idx * 4 + 0] = pigment_bytes.decode_float(pigment_base + 0)
+				full_pigment[canvas_idx * 4 + 1] = pigment_bytes.decode_float(pigment_base + 4)
+				full_pigment[canvas_idx * 4 + 2] = pigment_bytes.decode_float(pigment_base + 8)
+				full_pigment[canvas_idx * 4 + 3] = pigment_bytes.decode_float(pigment_base + 12)
+
+	# Upload full buffers with region data embedded
+	rd.texture_update(paint_water_tex, 0, full_water.to_byte_array())
+	rd.texture_update(paint_pigment_tex, 0, full_pigment.to_byte_array())
+
+	# Run add_paint compute shader to add paint to canvas with pressure
+	var groups_x = int(ceil(float(canvas_width) / 8.0))
+	var groups_y = int(ceil(float(canvas_height) / 8.0))
+	_dispatch_add_paint(groups_x, groups_y, pressure)
 
 # Get texture RIDs for display
 func get_water_texture() -> RID:
@@ -700,31 +845,8 @@ func get_static_texture() -> RID:
 
 # Cleanup
 func _exit_tree():
-	if rd:
-		# Free all textures
-		if water_read_tex.is_valid(): rd.free_rid(water_read_tex)
-		if water_write_tex.is_valid(): rd.free_rid(water_write_tex)
-		if mobile_read_tex.is_valid(): rd.free_rid(mobile_read_tex)
-		if mobile_write_tex.is_valid(): rd.free_rid(mobile_write_tex)
-		if static_read_tex.is_valid(): rd.free_rid(static_read_tex)
-		if static_write_tex.is_valid(): rd.free_rid(static_write_tex)
-		if inertia_read_tex.is_valid(): rd.free_rid(inertia_read_tex)
-		if inertia_write_tex.is_valid(): rd.free_rid(inertia_write_tex)
-		if absorbency_tex.is_valid(): rd.free_rid(absorbency_tex)
-		if displacement_tex.is_valid(): rd.free_rid(displacement_tex)
-
-		# Free pipelines
-		if evaporation_pipeline.is_valid(): rd.free_rid(evaporation_pipeline)
-		if displacement_pipeline.is_valid(): rd.free_rid(displacement_pipeline)
-		if inflow_pipeline.is_valid(): rd.free_rid(inflow_pipeline)
-		if diffusion_pipeline.is_valid(): rd.free_rid(diffusion_pipeline)
-		if deposition_pipeline.is_valid(): rd.free_rid(deposition_pipeline)
-
-		# Free shaders
-		if evaporation_shader.is_valid(): rd.free_rid(evaporation_shader)
-		if displacement_shader.is_valid(): rd.free_rid(displacement_shader)
-		if inflow_shader.is_valid(): rd.free_rid(inflow_shader)
-		if diffusion_shader.is_valid(): rd.free_rid(diffusion_shader)
-		if deposition_shader.is_valid(): rd.free_rid(deposition_shader)
-
-		rd.free()
+	# Note: When using global RenderingDevice, we should NOT free resources
+	# The rendering server owns and manages the global device
+	# Freeing resources here causes slow shutdown as the engine waits for GPU sync
+	# The rendering server will clean up all resources when the application exits
+	pass
