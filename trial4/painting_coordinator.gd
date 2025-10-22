@@ -136,6 +136,9 @@ func _process(_delta: float):
 		if pencil_texture and pencil_image: pencil_texture.update(pencil_image)
 		_dirty_pencil = false
 
+	# Q key: Show only water layer (debug/preview feature)
+	_handle_layer_visibility_controls()
+
 
 # TODO Phase 5: Implement GPU paint upload
 # This function will need to be rewritten to upload paint data to GPU
@@ -403,3 +406,27 @@ func mark_pencil_dirty():
 
 func set_active_brush(brush_node: Node):
 	self.active_brush_node = brush_node
+
+# Handle layer visibility controls (Q key for water layer preview)
+func _handle_layer_visibility_controls():
+	# Q key: While held, show ONLY water layer
+	var q_pressed = Input.is_key_pressed(KEY_Q)
+
+	if q_pressed:
+		# Hide mobile and static layers to show only water
+		if is_instance_valid(mobile_layer_sprite):
+			mobile_layer_sprite.visible = false
+		if is_instance_valid(static_layer_sprite):
+			static_layer_sprite.visible = false
+		# Show water layer
+		if is_instance_valid(water_layer_sprite):
+			water_layer_sprite.visible = true
+	else:
+		# Restore normal visibility: show mobile and static, hide water
+		if is_instance_valid(mobile_layer_sprite):
+			mobile_layer_sprite.visible = true
+		if is_instance_valid(static_layer_sprite):
+			static_layer_sprite.visible = true
+		# Hide water layer (normal painting view)
+		if is_instance_valid(water_layer_sprite):
+			water_layer_sprite.visible = false

@@ -149,7 +149,7 @@ func _process(_delta: float) -> void:
 
 # IMPORTANT: use _input (not _unhandled_input) so pen hover/motion reaches us even if UI handles it
 func _input(event: InputEvent) -> void:
-	# 1) Update pointer positions from motion events
+	# 1) ALWAYS update pointer positions from motion events (even when over UI)
 	if event is InputEventMouseMotion:
 		_last_screen_pos = event.position
 
@@ -162,7 +162,32 @@ func _input(event: InputEvent) -> void:
 			# Fallback if no Camera2D
 			_last_world_pos = get_viewport().get_canvas_transform().affine_inverse() * event.position
 
-	# 2) Forward input to active brush with correct image-space position (for draws & pressure)
+	# ALSO update position from button events to handle clicks when settings window has focus
+	elif event is InputEventMouseButton:
+		_last_screen_pos = event.position
+
+		var cam = get_viewport().get_camera_2d()
+		if cam:
+			# Convert screen position to world position through camera
+			var canvas_transform = cam.get_canvas_transform()
+			_last_world_pos = canvas_transform.affine_inverse() * event.position
+		else:
+			# Fallback if no Camera2D
+			_last_world_pos = get_viewport().get_canvas_transform().affine_inverse() * event.position
+
+	# 2) Check if mouse is over UI - if so, don't forward to brush but still update cursor
+	if event is InputEventMouseButton or event is InputEventMouseMotion:
+		if _is_mouse_over_ui(event.position):
+			# Cancel any active stroke to prevent ghost lines
+			if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+				var active = painting_coordinator.get("active_brush_node") if is_instance_valid(painting_coordinator) else null
+				if is_instance_valid(active) and active.has_method("cancel_stroke"):
+					active.cancel_stroke()
+			# DON'T call set_input_as_handled() - let UI elements process the event normally
+			# Note: We still update _last_world_pos above, so cursor will follow mouse
+			return  # Just block input from reaching canvas/brush
+
+	# 3) Forward input to active brush with correct image-space position (for draws & pressure)
 	var active = painting_coordinator.get("active_brush_node") if is_instance_valid(painting_coordinator) else null
 	if is_instance_valid(active) and is_instance_valid(layer_for_mouse_pos):
 		var img_pos = layer_for_mouse_pos.to_local(_last_world_pos)
@@ -420,3 +445,61 @@ func _update_eraser_cursor_size():
 
 	# Scale the cursor to match eraser size (15.5 is the base radius in the texture)
 	eraser_cursor.scale = Vector2(eraser_size / 15.5, eraser_size / 15.5)
+
+# Check if mouse position is over any UI element
+func _is_mouse_over_ui(screen_pos: Vector2) -> bool:
+	# Check settings button
+	var settings_button = get_node_or_null("../CanvasLayer/SettingsButton")
+	if is_instance_valid(settings_button) and settings_button.visible:
+		if settings_button.get_global_rect().has_point(screen_pos):
+			# print("Mouse over Settings button - blocking canvas input")
+			return true
+
+	# Physics settings window is a separate Window node, not an overlay
+	# So we don't need to block painting when it's open - user can paint while adjusting settings!
+
+	# Check color picker
+	if is_instance_valid(color_picker) and color_picker.visible:
+		if color_picker.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check pigment alpha slider and its container
+	var pigment_control = get_node_or_null("../CanvasLayer/pigment_control")
+	if is_instance_valid(pigment_control) and pigment_control.visible:
+		if pigment_control.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check water slider and its container
+	var water_control = get_node_or_null("../CanvasLayer/water_control")
+	if is_instance_valid(water_control) and water_control.visible:
+		if water_control.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check color swatch
+	var color_swatch = get_node_or_null("../CanvasLayer/color_swatch")
+	if is_instance_valid(color_swatch) and color_swatch.visible:
+		if color_swatch.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check brush buttons container
+	var vbox_container = get_node_or_null("../CanvasLayer/VBoxContainer")
+	if is_instance_valid(vbox_container) and vbox_container.visible:
+		if vbox_container.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check brush size popup
+	if is_instance_valid(brush_size_popup) and brush_size_popup.visible:
+		if brush_size_popup.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check pencil size popup
+	if is_instance_valid(pencil_size_popup) and pencil_size_popup.visible:
+		if pencil_size_popup.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check eraser size popup
+	if is_instance_valid(eraser_size_popup) and eraser_size_popup.visible:
+		if eraser_size_popup.get_global_rect().has_point(screen_pos):
+			return true
+
+	return false

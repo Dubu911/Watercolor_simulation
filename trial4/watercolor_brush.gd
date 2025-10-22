@@ -52,6 +52,10 @@ func _event_pressure(event: InputEvent) -> float:
 func deactivate():
 	is_painting = false
 
+# Cancel current stroke (called when UI is clicked to prevent ghost lines)
+func cancel_stroke():
+	is_painting = false
+
 func set_active_color(new_color: Color):
 	self.brush_color = new_color
 
@@ -98,12 +102,14 @@ func handle_input(event: InputEvent, mouse_pos_img_space: Vector2):
 func _start_new_stroke(pos: Vector2, pressure: float):
 	is_painting = true
 	current_pressure = pressure
+	# IMPORTANT: Set last_paint_pos BEFORE painting to prevent ghost lines
 	last_paint_pos = pos
 
 	# Clear the stroke mask for new stroke
 	_clear_stroke_mask()
 
-	# Paint initial point
+	# Paint initial point (from pos to pos = just a dot)
+	print("Starting new stroke at: ", pos, " (last_paint_pos was: ", last_paint_pos, ")")
 	_paint_stroke_segment(pos, pos, pressure)
 
 # Continue an existing stroke

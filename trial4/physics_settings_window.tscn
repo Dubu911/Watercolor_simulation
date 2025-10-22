@@ -1,0 +1,344 @@
+[gd_scene load_steps=2 format=3 uid="uid://cxm8vp3qkr1ya"]
+
+[ext_resource type="Script" path="res://trial4/physics_settings_window.gd" id="1_physics_settings"]
+
+[node name="PhysicsSettingsWindow" type="Window"]
+title = "Physics Settings"
+initial_position = 0
+size = Vector2i(500, 700)
+visible = false
+transient = false
+exclusive = false
+always_on_top = true
+unfocusable = true
+script = ExtResource("1_physics_settings")
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Physics Parameters"
+theme_override_font_sizes/font_size = 20
+
+[node name="HSeparator1" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ParametersVBox" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="CanvasOrientationSection" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SectionLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection"]
+layout_mode = 2
+text = "1. Canvas Orientation"
+theme_override_font_sizes/font_size = 16
+
+[node name="VerticalTilt" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/VerticalTilt"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Vertical Tilt:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/VerticalTilt"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -90.0
+max_value = 90.0
+step = 1.0
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/VerticalTilt"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.0°"
+horizontal_alignment = 2
+
+[node name="HorizontalTilt" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/HorizontalTilt"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Horizontal Tilt:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/HorizontalTilt"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -90.0
+max_value = 90.0
+step = 1.0
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/HorizontalTilt"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.0°"
+horizontal_alignment = 2
+
+[node name="HSeparator2" type="HSeparator" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox"]
+layout_mode = 2
+
+[node name="WaterSection" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SectionLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
+layout_mode = 2
+text = "2. Water Parameters"
+theme_override_font_sizes/font_size = 16
+
+[node name="SurfaceTension" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SurfaceTension"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Surface Tension (S):"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SurfaceTension"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.1
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SurfaceTension"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.10"
+horizontal_alignment = 2
+
+[node name="SpreadForce" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SpreadForce"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Spread Force (SP):"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SpreadForce"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 2.0
+step = 0.01
+value = 0.5
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SpreadForce"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.50"
+horizontal_alignment = 2
+
+[node name="CancelingPower" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/CancelingPower"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Canceling Power:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/CancelingPower"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.6747
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/CancelingPower"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.67"
+horizontal_alignment = 2
+
+[node name="AccelerationPower" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/AccelerationPower"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Acceleration Power:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/AccelerationPower"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.1536
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/AccelerationPower"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.15"
+horizontal_alignment = 2
+
+[node name="EvaporationConst" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/EvaporationConst"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Evaporation Rate:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/EvaporationConst"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 0.1
+step = 0.001
+value = 0.01
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/EvaporationConst"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.01"
+horizontal_alignment = 2
+
+[node name="HoldThreshold" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/HoldThreshold"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Hold Threshold:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/HoldThreshold"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 20.0
+step = 0.1
+value = 5.0
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/HoldThreshold"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "5.0"
+horizontal_alignment = 2
+
+[node name="HSeparator3" type="HSeparator" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox"]
+layout_mode = 2
+
+[node name="DiffusionSection" type="VBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SectionLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
+layout_mode = 2
+text = "3. Diffusion & Deposition Parameters"
+theme_override_font_sizes/font_size = 16
+
+[node name="DiffusionRate" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionRate"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Diffusion Rate:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionRate"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.1
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionRate"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.10"
+horizontal_alignment = 2
+
+[node name="DiffusionLimiter" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionLimiter"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Diffusion Limiter:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionLimiter"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.25
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionLimiter"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.25"
+horizontal_alignment = 2
+
+[node name="DepositBase" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Deposition Rate:"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 5.0
+step = 0.1
+value = 1.0
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "1.0"
+horizontal_alignment = 2
+
+[node name="WScale" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/WScale"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Water Scale (w_scale):"
+
+[node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/WScale"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 1.0
+step = 0.01
+value = 0.2
+
+[node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/WScale"]
+custom_minimum_size = Vector2(60, 0)
+layout_mode = 2
+text = "0.20"
+horizontal_alignment = 2
+
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/VerticalTilt/Slider" to="." method="_on_vertical_tilt_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/HorizontalTilt/Slider" to="." method="_on_horizontal_tilt_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SurfaceTension/Slider" to="." method="_on_surface_tension_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SpreadForce/Slider" to="." method="_on_spread_force_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/CancelingPower/Slider" to="." method="_on_canceling_power_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/AccelerationPower/Slider" to="." method="_on_acceleration_power_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/EvaporationConst/Slider" to="." method="_on_evaporation_const_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/HoldThreshold/Slider" to="." method="_on_hold_threshold_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionRate/Slider" to="." method="_on_diffusion_rate_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionLimiter/Slider" to="." method="_on_diffusion_limiter_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase/Slider" to="." method="_on_deposit_base_changed"]
+[connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/WScale/Slider" to="." method="_on_w_scale_changed"]

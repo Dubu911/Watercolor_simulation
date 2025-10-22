@@ -1,6 +1,6 @@
 [gd_scene load_steps=12 format=3 uid="uid://vxkf7011y6xb"]
 
-[ext_resource type="Script" uid="uid://b20s4eqjlfjto" path="res://trial4/main_4.gd" id="1_bp1uf"]
+[ext_resource type="Script" uid="uid://cdxlvkajpq3pc" path="res://trial4/main_4.gd" id="1_bp1uf"]
 [ext_resource type="Script" uid="uid://du18xtr1i45e0" path="res://trial3/brush_manager_v3.gd" id="2_2yaok"]
 [ext_resource type="Script" uid="uid://b8r4ttw2vfo28" path="res://trial4/pencil_brush.gd" id="2_h1ynh"]
 [ext_resource type="Script" uid="uid://crjm0c6w7fi57" path="res://trial3/watercolor_brush_v3.gd" id="2_shnf3"]

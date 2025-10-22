@@ -31,19 +31,24 @@ func _ready():
 		offset = Vector2(256, 256)
 		zoom = Vector2(2.0, 2.0)
 
-func _input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_MIDDLE:
-			if event.is_pressed():
-				is_panning = true
-			else:
-				is_panning = false
+func _process(_delta: float) -> void:
+	# Check middle mouse button state every frame (works even when other windows are focused)
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
+		if not is_panning:
+			is_panning = true
+	else:
+		is_panning = false
 
+func _input(event: InputEvent) -> void:
+	# Handle panning motion - always process if middle button is held
 	if event is InputEventMouseMotion:
 		if is_panning:
-			position -= event.relative
+			# Pan the camera regardless of which window has focus
+			position -= event.relative / zoom  # Adjust for zoom level
+			# Mark as handled so it doesn't propagate further
+			get_viewport().set_input_as_handled()
 
-	# --- Mouse Wheel Zoom Logic (new) ---
+	# --- Mouse Wheel Zoom Logic ---
 	# Check if the event is a mouse button event (scroll wheel events are also button events)
 	if event is InputEventMouseButton:
 		if event.is_pressed(): # Process scroll only on the press event

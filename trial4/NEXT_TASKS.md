@@ -12,14 +12,15 @@ This document outlines planned improvements for the GPU-accelerated watercolor s
 
 ### Features to implement:
 
-#### A. Quick water layer preview (Q key)
+#### A. Quick water layer preview (Q key) ✅ **COMPLETED**
 - **Behavior**: While 'Q' key is held down, show ONLY the water layer
 - **Purpose**: Let users see which areas are wet (useful for wet-on-wet techniques)
-- **Implementation**:
-  - Detect `Input.is_key_pressed(KEY_Q)` in `_process()`
-  - Temporarily hide mobile/static layers
-  - Show water layer with debug shader
-  - Restore visibility when key released
+- **Implementation**: ✨
+  - ✅ Detect `Input.is_key_pressed(KEY_Q)` in `_process()`
+  - ✅ Temporarily hide mobile/static layers
+  - ✅ Show water layer with debug shader
+  - ✅ Restore visibility when key released
+  - **Implemented in**: `trial4/painting_coordinator.gd` → `_handle_layer_visibility_controls()`
 
 #### B. Manual layer toggle buttons
 - Add UI buttons/checkboxes for each layer:
@@ -179,9 +180,22 @@ func _is_mouse_over_ui(screen_pos: Vector2) -> bool:
 
 ---
 
-## 4. Runtime Physics Parameter Adjustment Window
+## 4. Runtime Physics Parameter Adjustment Window ✅ **COMPLETED**
 
 **Goal**: Allow users to tune physics parameters in real-time without editing code.
+
+**Implementation Summary:**
+- ✅ Created `physics_settings_window.tscn` - Popup window with organized parameter sections
+- ✅ Created `physics_settings_window.gd` - Script handling all slider updates
+- ✅ Added "⚙ Settings" button in top-left corner of main UI
+- ✅ Organized parameters into 3 sections:
+  1. Canvas Orientation (vertical/horizontal tilt)
+  2. Water Parameters (S, SP, canceling, acceleration, evaporation, hold threshold)
+  3. Diffusion & Deposition (diffusion rate/limiter, deposition rate, w_scale)
+- ✅ Each slider shows current value on the right
+- ✅ X button to close window
+- ✅ Changes apply immediately (live preview)
+- ✅ Window opens centered when Settings button clicked
 
 ### Features:
 
@@ -265,12 +279,268 @@ func _is_mouse_over_ui(screen_pos: Vector2) -> bool:
 - Region-based paint upload optimization
 - Brush dab frequency optimization (0.5 step size)
 - Pigment display shader with proper alpha blending
+- **Task 3 - UI input blocking** ✨ (prevents painting when clicking UI elements)
+- **Task 1A - Q key water layer preview** ✨ (hold Q to show only water layer)
+- **Task 4 - Physics parameter window** ✨ (real-time parameter adjustment UI)
 
 📝 **Next priorities** (recommended order):
-1. Task 3 - UI input blocking (quick fix, improves usability)
-2. Task 1 - Layer visibility controls (useful for debugging)
-3. Task 4 - Physics parameter window (helps with tuning)
+1. ~~Task 3 - UI input blocking~~ ✅ **COMPLETED**
+2. Task 1A - ~~Q key water layer preview~~ ✅ **COMPLETED** | Task 1B - Layer toggle buttons (pending)
+3. ~~Task 4 - Physics parameter window~~ ✅ **COMPLETED**
 4. Task 2 - Faster input (bigger project, requires testing)
+5. Task 5 - Save/Load functionality (preserve and restore paintings)
+6. Task 6 - Pigment lifting brush (digital advantage - remove/lighten pigment)
+
+---
+
+## 5. Save/Load Functionality
+
+**Goal**: Allow users to save and load their watercolor paintings
+
+### Features to implement:
+
+#### A. Save painting
+- **What to save**:
+  - Static layer (dried pigment) - main painting data
+  - Mobile layer (wet pigment) - preserves wet paint state
+  - Water layer - preserves water distribution
+  - Pencil layer - preserves pencil sketches
+  - Background layer (optional) - custom paper color
+  - Metadata: canvas size, creation date, app version
+
+- **File format options**:
+  - **Option 1: PNG export** (simple, non-editable)
+    - Composite all layers into final image
+    - Export as standard PNG
+    - Pros: Universal format, small file size
+    - Cons: Cannot continue editing, loses layer data
+
+  - **Option 2: Custom format** (editable project file)
+    - Save each layer as separate data
+    - Use JSON/binary format with layer images embedded
+    - Extension: `.wcproj` (watercolor project)
+    - Pros: Fully editable, preserves all simulation state
+    - Cons: Larger file size, custom format
+
+  - **Option 3: Both** (recommended)
+    - "Export PNG" for final artwork
+    - "Save Project" for continuing work later
+
+#### B. Load painting
+- **Load from file**:
+  - Read layer data from saved file
+  - Reconstruct GPU textures from loaded images
+  - Resume simulation from saved state
+
+- **Validation**:
+  - Check file version compatibility
+  - Verify canvas size matches
+  - Handle corrupted files gracefully
+
+#### C. UI Integration
+- Add File menu or buttons:
+  - 💾 **Save Project** (Ctrl+S) - saves `.wcproj` file
+  - 📁 **Load Project** (Ctrl+O) - opens `.wcproj` file
+  - 🖼️ **Export PNG** (Ctrl+E) - exports flattened image
+  - 🆕 **New Canvas** (Ctrl+N) - clears all layers (with confirmation)
+
+**Implementation approach**:
+
+1. Create `trial4/file_manager.gd` script
+2. Implement save functions:
+   ```gdscript
+   func save_project(filepath: String) -> bool
+   func export_png(filepath: String) -> bool
+   ```
+3. Implement load functions:
+   ```gdscript
+   func load_project(filepath: String) -> bool
+   ```
+4. Add UI buttons and file dialogs (`FileDialog` node)
+5. Connect to painting_coordinator to access layer images
+6. Handle GPU texture updates after loading
+
+**Files to create/modify**:
+- Create: `trial4/file_manager.gd` - handles all save/load logic
+- Modify: `trial4/main4.tscn` - add File menu UI and FileDialog nodes
+- Modify: `trial4/painting_coordinator.gd` - expose layer images, add methods to load layers
+
+**Save format structure** (Option 2 - Custom format):
+```json
+{
+  "version": "1.0",
+  "canvas_width": 256,
+  "canvas_height": 256,
+  "created_at": "2025-01-15T10:30:00Z",
+  "layers": {
+    "static": "base64_encoded_image_data",
+    "mobile": "base64_encoded_image_data",
+    "water": "base64_encoded_image_data",
+    "pencil": "base64_encoded_image_data",
+    "background": "base64_encoded_image_data"
+  }
+}
+```
+
+---
+
+## 6. Pigment Lifting Brush
+
+**Goal**: Implement a brush that removes/lifts pigment from the canvas (digital-only feature, not possible in real watercolor)
+
+### Purpose:
+- **Undo mistakes** without clearing entire canvas
+- **Create highlights** by removing pigment in specific areas
+- **Lighten colors** by partially lifting pigment
+- **Digital advantage** - allows corrections impossible with physical watercolor
+
+### Features to implement:
+
+#### A. Lifting Mechanism
+- **What to lift**:
+  - **Static layer (dried pigment)** - primary target for lifting
+  - **Mobile layer (wet pigment)** - optional, lift wet paint too
+  - **Mixing behavior**: Lift more pigment from wet areas vs dry areas
+
+- **Lifting modes**:
+  1. **Full lift** - Completely remove pigment (back to white paper)
+  2. **Partial lift** - Reduce pigment concentration (lighten color)
+  3. **Wet lift** - Add water while lifting (simulates real wet-lifting technique)
+
+#### B. Brush Parameters
+- **Lift strength** (0.0 - 1.0)
+  - 0.0 = No lifting
+  - 0.5 = Lighten by 50%
+  - 1.0 = Complete removal
+
+- **Brush size** - Same as watercolor brush (pressure-sensitive)
+
+- **Pressure sensitivity**:
+  - Light pressure = gentle lifting (lighten)
+  - Heavy pressure = aggressive lifting (remove)
+
+- **Water interaction**:
+  - Option 1: Lift only pigment (dry technique)
+  - Option 2: Add water while lifting (wet technique, creates blooms)
+
+#### C. Implementation Approach
+
+**GPU Implementation (Recommended):**
+
+1. **Create lifting shader**: `trial4/shaders/lift_pigment.glsl`
+   ```glsl
+   // Reduce pigment alpha/concentration at lift position
+   // Apply circular brush pattern
+   // Respect lift strength parameter
+   ```
+
+2. **Add to physics pipeline**:
+   - New function: `physics_simulator.upload_lift_region()`
+   - Similar to `upload_paint_region()` but subtracts pigment
+   - Operates on static layer (and optionally mobile layer)
+
+3. **Create lifting brush**: `trial4/lifting_brush.gd`
+   - Similar structure to `watercolor_brush.gd`
+   - Calls `coordinator.lift_pigment_at(pos, strength, radius, pressure)`
+   - Uses same stroke interpolation as watercolor brush
+
+4. **Coordinator integration**: `painting_coordinator.gd`
+   ```gdscript
+   func lift_pigment_at(pos: Vector2, strength: float, radius: float, pressure: float = 1.0):
+       # Create region buffer for lift operation
+       # Calculate pigment reduction (strength * pressure)
+       # Upload to GPU shader for processing
+   ```
+
+**CPU Implementation (Alternative):**
+- Directly modify static_read_buffer image
+- Reduce pixel alpha/concentration at brush position
+- Simpler but slower for large brushes
+
+#### D. UI Integration
+
+**Add lifting brush to brush selector:**
+- 🧽 **Lifting Brush** button (new icon needed)
+- Size slider (reuse existing popup pattern)
+- Strength slider (0-100%)
+- Toggle: "Add water while lifting" checkbox
+
+**Keyboard shortcut:**
+- **L key** - Switch to lifting brush
+- Or add to existing brush cycle (watercolor → pencil → eraser → lifter)
+
+#### E. Visual Feedback
+
+**Cursor visualization:**
+- Show lift strength as cursor opacity
+- Lighter cursor = gentle lift
+- Darker cursor = aggressive lift
+
+**Preview mode (optional):**
+- Show what will be lifted before applying
+- Similar to selection preview in Photoshop
+
+#### F. Technical Considerations
+
+**Lifting from static layer:**
+```gdscript
+# Reduce pigment concentration
+var current_color = static_layer.get_pixel(x, y)
+var lift_amount = strength * pressure
+var new_alpha = current_color.a * (1.0 - lift_amount)  # Reduce concentration
+static_layer.set_pixel(x, y, Color(current_color.r, current_color.g, current_color.b, new_alpha))
+```
+
+**Wet lifting (with water):**
+```gdscript
+# Add water while lifting pigment
+water_layer.set_pixel(x, y, water_amount)
+# Move some static pigment to mobile layer
+var lifted_pigment = static_color * lift_amount
+mobile_layer.set_pixel(x, y, lifted_pigment)
+static_layer.set_pixel(x, y, static_color * (1.0 - lift_amount))
+```
+
+**GPU shader approach:**
+```glsl
+// lift_pigment.glsl
+void main() {
+    vec4 current_pigment = texture(static_layer, uv);
+    float lift_amount = lift_strength * brush_pattern * pressure;
+
+    // Reduce pigment concentration
+    float new_alpha = current_pigment.a * (1.0 - lift_amount);
+
+    // Optional: Add water to create wet-lift effect
+    float water_added = lift_amount * wet_lift_enabled;
+
+    fragColor = vec4(current_pigment.rgb, new_alpha);
+}
+```
+
+### Files to create/modify:
+
+**Create:**
+- `trial4/lifting_brush.gd` - Lifting brush logic
+- `trial4/shaders/lift_pigment.glsl` - GPU shader for lifting (if using GPU approach)
+- Icon for lifting brush button
+
+**Modify:**
+- `trial4/brush_manager.gd` - Add lifting brush to brush array, add UI controls
+- `trial4/painting_coordinator.gd` - Add `lift_pigment_at()` function
+- `trial4/physics_simulator_gpu.gd` - Add `upload_lift_region()` and shader integration
+- `trial4/main4.tscn` - Add lifting brush button and UI controls
+
+### Testing Checklist:
+
+- ✅ Lifting removes pigment from static layer
+- ✅ Lift strength affects amount removed
+- ✅ Pressure sensitivity works correctly
+- ✅ Brush size scales properly
+- ✅ Wet lift mode creates realistic blooms (if implemented)
+- ✅ Works with GPU rendering pipeline
+- ✅ No artifacts or visual glitches
+- ✅ Performance is acceptable (no lag during lifting)
 
 ---
 

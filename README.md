@@ -10,25 +10,30 @@ It is being developed using the [Godot Game Engine](https://godotengine.org/).
 
 ## Status
 
-Converting all logics in trial3 to trial4 using shaders.
+Trial4 is fully GPU-accelerated with compute shaders. Physics settings window implemented with real-time parameter adjustment. Working on advanced features and UI improvements.
 
 ## Next Steps
--Support broader brush inputs (pressure, stroke speed)
+- Support broader brush inputs (pressure sensitivity - partially implemented, stroke speed)
 - Implement a velocity map to reduce oscillation in the water layer
-- Convert GPU-ready code into shaders to scale up canvas size
-- Add a whitening(lift) watercolor brush so user can undo the work
+- Add layer visibility controls (Q key preview implemented, UI buttons pending)
+- Add a pigment lifting brush for digital workflow advantages
 - Expand pencil input range
 - Improve the UI, especially snapshot/history
-- Add load, save functionality
+- Add load/save functionality
 - Optimize for web performance
 
 ## Trial Descriptions
 - **`trial1`**: Focused on learning the basics of the Godot engine.
 - **`trial2`**: Introduced a more robust data structure to support future expansion.
-- **`trial3`**: 
+- **`trial3`**:
 - Improved data structure for faster simulation and easier feature expansion.
 - CPU implementation with GPU-friendly logic in place
-- Core physics algorithms in progress; currently working on watercolor brush
+- Completed watercolor physics simulation with gravity, surface tension, evaporation, and deposition
 
 - **`trial4`**:
-- To do : Convert trial3 to shaders so it can scale up
+- Fully GPU-accelerated using compute shaders (GLSL)
+- Physics settings window with real-time parameter adjustment
+- Pressure-sensitive brush support (tablet/Wacom)
+- Layer visibility controls (Q key for water layer preview)
+- Camera controls (pan with middle mouse, zoom with scroll wheel)
+- 64x64 canvas running at interactive framerates
