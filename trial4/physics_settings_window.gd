@@ -1,21 +1,13 @@
 # physics_settings_window.gd
-extends Window
+extends PopupPanel
 
 # References to coordinator and physics simulator
 var painting_coordinator: Node = null
 var physics_simulator: Node = null
 
-# Called when the window is ready
+# Called when the panel is ready
 func _ready():
-	# Connect the window's close_requested signal to hide the window
-	close_requested.connect(_on_close_requested)
-
-	# Allow input events to pass through the window to the main viewport
-	# This lets camera panning and other controls work even when the settings window is open
-	gui_embed_subwindows = false
-
-func _on_close_requested():
-	hide()
+	pass
 
 # Initialize with references to coordinator and simulator
 func initialize(coordinator: Node, simulator: Node):

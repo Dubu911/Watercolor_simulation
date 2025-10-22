@@ -2,15 +2,11 @@
 
 [ext_resource type="Script" path="res://trial4/physics_settings_window.gd" id="1_physics_settings"]
 
-[node name="PhysicsSettingsWindow" type="Window"]
+[node name="PhysicsSettingsPanel" type="PopupPanel"]
 title = "Physics Settings"
-initial_position = 0
+initial_position = 1
 size = Vector2i(500, 700)
 visible = false
-transient = false
-exclusive = false
-always_on_top = true
-unfocusable = true
 script = ExtResource("1_physics_settings")
 
 [node name="MarginContainer" type="MarginContainer" parent="."]
@@ -51,7 +47,7 @@ theme_override_constants/separation = 8
 
 [node name="SectionLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection"]
 layout_mode = 2
-text = "1. Canvas Orientation"
+text = "Canvas Orientation"
 theme_override_font_sizes/font_size = 16
 
 [node name="VerticalTilt" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection"]
@@ -67,13 +63,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 min_value = -90.0
 max_value = 90.0
-step = 1.0
+step = 0.1
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/VerticalTilt"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "0.0°"
-horizontal_alignment = 2
+text = "0.00°"
 
 [node name="HorizontalTilt" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection"]
 layout_mode = 2
@@ -88,13 +83,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 min_value = -90.0
 max_value = 90.0
-step = 1.0
+step = 0.1
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/HorizontalTilt"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "0.0°"
-horizontal_alignment = 2
+text = "0.00°"
 
 [node name="HSeparator2" type="HSeparator" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox"]
 layout_mode = 2
@@ -105,7 +99,7 @@ theme_override_constants/separation = 8
 
 [node name="SectionLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
 layout_mode = 2
-text = "2. Water Parameters"
+text = "Water Parameters"
 theme_override_font_sizes/font_size = 16
 
 [node name="SurfaceTension" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
@@ -114,20 +108,20 @@ layout_mode = 2
 [node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SurfaceTension"]
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
-text = "Surface Tension (S):"
+text = "Surface Tension:"
 
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SurfaceTension"]
 layout_mode = 2
 size_flags_horizontal = 3
-max_value = 1.0
+min_value = 0.0
+max_value = 2.0
 step = 0.01
-value = 0.1
+value = 0.5
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SurfaceTension"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "0.10"
-horizontal_alignment = 2
+text = "0.50"
 
 [node name="SpreadForce" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
 layout_mode = 2
@@ -135,11 +129,12 @@ layout_mode = 2
 [node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SpreadForce"]
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
-text = "Spread Force (SP):"
+text = "Spread Force:"
 
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/SpreadForce"]
 layout_mode = 2
 size_flags_horizontal = 3
+min_value = 0.0
 max_value = 2.0
 step = 0.01
 value = 0.5
@@ -148,7 +143,6 @@ value = 0.5
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
 text = "0.50"
-horizontal_alignment = 2
 
 [node name="CancelingPower" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
 layout_mode = 2
@@ -161,15 +155,15 @@ text = "Canceling Power:"
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/CancelingPower"]
 layout_mode = 2
 size_flags_horizontal = 3
-max_value = 1.0
+min_value = 0.0
+max_value = 2.0
 step = 0.01
-value = 0.6747
+value = 0.5
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/CancelingPower"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "0.67"
-horizontal_alignment = 2
+text = "0.50"
 
 [node name="AccelerationPower" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
 layout_mode = 2
@@ -182,15 +176,15 @@ text = "Acceleration Power:"
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/AccelerationPower"]
 layout_mode = 2
 size_flags_horizontal = 3
-max_value = 1.0
+min_value = 0.0
+max_value = 2.0
 step = 0.01
-value = 0.1536
+value = 0.5
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/AccelerationPower"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "0.15"
-horizontal_alignment = 2
+text = "0.50"
 
 [node name="EvaporationConst" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
 layout_mode = 2
@@ -203,7 +197,8 @@ text = "Evaporation Rate:"
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/EvaporationConst"]
 layout_mode = 2
 size_flags_horizontal = 3
-max_value = 0.1
+min_value = 0.0
+max_value = 1.0
 step = 0.001
 value = 0.01
 
@@ -211,7 +206,6 @@ value = 0.01
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
 text = "0.01"
-horizontal_alignment = 2
 
 [node name="HoldThreshold" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection"]
 layout_mode = 2
@@ -224,15 +218,15 @@ text = "Hold Threshold:"
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/HoldThreshold"]
 layout_mode = 2
 size_flags_horizontal = 3
-max_value = 20.0
+min_value = 0.0
+max_value = 10.0
 step = 0.1
 value = 5.0
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/WaterSection/HoldThreshold"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "5.0"
-horizontal_alignment = 2
+text = "5.00"
 
 [node name="HSeparator3" type="HSeparator" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox"]
 layout_mode = 2
@@ -243,7 +237,7 @@ theme_override_constants/separation = 8
 
 [node name="SectionLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
 layout_mode = 2
-text = "3. Diffusion & Deposition Parameters"
+text = "Diffusion Parameters"
 theme_override_font_sizes/font_size = 16
 
 [node name="DiffusionRate" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
@@ -257,15 +251,15 @@ text = "Diffusion Rate:"
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionRate"]
 layout_mode = 2
 size_flags_horizontal = 3
+min_value = 0.0
 max_value = 1.0
-step = 0.01
+step = 0.001
 value = 0.1
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionRate"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
 text = "0.10"
-horizontal_alignment = 2
 
 [node name="DiffusionLimiter" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
 layout_mode = 2
@@ -278,15 +272,15 @@ text = "Diffusion Limiter:"
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionLimiter"]
 layout_mode = 2
 size_flags_horizontal = 3
+min_value = 0.0
 max_value = 1.0
 step = 0.01
-value = 0.25
+value = 0.5
 
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionLimiter"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "0.25"
-horizontal_alignment = 2
+text = "0.50"
 
 [node name="DepositBase" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
 layout_mode = 2
@@ -294,11 +288,12 @@ layout_mode = 2
 [node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase"]
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
-text = "Deposition Rate:"
+text = "Deposit Base:"
 
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase"]
 layout_mode = 2
 size_flags_horizontal = 3
+min_value = 0.0
 max_value = 5.0
 step = 0.1
 value = 1.0
@@ -306,8 +301,7 @@ value = 1.0
 [node name="ValueLabel" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase"]
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
-text = "1.0"
-horizontal_alignment = 2
+text = "1.00"
 
 [node name="WScale" type="HBoxContainer" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection"]
 layout_mode = 2
@@ -315,11 +309,12 @@ layout_mode = 2
 [node name="Label" type="Label" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/WScale"]
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
-text = "Water Scale (w_scale):"
+text = "W Scale:"
 
 [node name="Slider" type="HSlider" parent="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/WScale"]
 layout_mode = 2
 size_flags_horizontal = 3
+min_value = 0.0
 max_value = 1.0
 step = 0.01
 value = 0.2
@@ -328,7 +323,6 @@ value = 0.2
 custom_minimum_size = Vector2(60, 0)
 layout_mode = 2
 text = "0.20"
-horizontal_alignment = 2
 
 [connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/VerticalTilt/Slider" to="." method="_on_vertical_tilt_changed"]
 [connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/CanvasOrientationSection/HorizontalTilt/Slider" to="." method="_on_horizontal_tilt_changed"]

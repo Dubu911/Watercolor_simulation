@@ -18,12 +18,13 @@ func _on_settings_button_pressed():
 		# Get settings button position
 		var settings_button = get_node_or_null("CanvasLayer/SettingsButton")
 		if settings_button:
-			# Position window just below the settings button (top-left corner)
+			# Position panel just below the settings button (top-left corner)
 			var button_rect = settings_button.get_global_rect()
-			var window_pos = Vector2i(int(button_rect.position.x), int(button_rect.end.y + 40))  # px gap below button
+			var panel_pos = Vector2(button_rect.position.x, button_rect.end.y + 40)  # 40px gap below button
+			var panel_size = Vector2(500, 700)
 
-			# Show the window at the specific position
-			physics_settings_window.popup(Rect2i(window_pos, physics_settings_window.size))
+			# Show the panel at the specific position
+			physics_settings_window.popup(Rect2(panel_pos, panel_size))
 		else:
 			# Fallback to centered if button not found
 			physics_settings_window.popup_centered()

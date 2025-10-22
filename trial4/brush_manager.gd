@@ -136,7 +136,7 @@ func _ready():
 
 # Update cursor position every frame using latest tracked position
 func _process(_delta: float) -> void:
-	# Always place cursor at the latest world position we computed from input events
+	# Always place cursor at the latest world position
 	_update_brush_cursor_positions(_last_world_pos)
 
 	# Bounds test in image (layer) space using the same last world pos
@@ -455,8 +455,11 @@ func _is_mouse_over_ui(screen_pos: Vector2) -> bool:
 			# print("Mouse over Settings button - blocking canvas input")
 			return true
 
-	# Physics settings window is a separate Window node, not an overlay
-	# So we don't need to block painting when it's open - user can paint while adjusting settings!
+	# Check physics settings panel (now a PopupPanel, so it's in the same viewport)
+	var settings_panel = get_node_or_null("../PhysicsSettingsPanel")
+	if is_instance_valid(settings_panel) and settings_panel.visible:
+		if settings_panel.get_global_rect().has_point(screen_pos):
+			return true
 
 	# Check color picker
 	if is_instance_valid(color_picker) and color_picker.visible:
