@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://k6ytgdayt334"]
+[gd_scene load_steps=15 format=3 uid="uid://k6ytgdayt334"]
 
 [ext_resource type="Script" uid="uid://cdxlvkajpq3pc" path="res://trial4/main_4.gd" id="1_bp1uf"]
 [ext_resource type="Script" uid="uid://cvvq6glpl1bup" path="res://trial4/brush_manager.gd" id="2_2yaok"]
@@ -11,7 +11,9 @@
 [ext_resource type="Script" uid="uid://cgy8dxuloorrd" path="res://trial4/painting_coordinator.gd" id="5_kn0cr"]
 [ext_resource type="Texture2D" uid="uid://j58fqdqtg4cu" path="res://icons/eraser.png" id="5_shnf3"]
 [ext_resource type="Script" uid="uid://dlbw47gs72ed5" path="res://trial4/physics_simulator_gpu.gd" id="7_hng6b"]
-[ext_resource type="PackedScene" path="res://trial4/physics_settings_window.tscn" id="13_physics_window"]
+[ext_resource type="PackedScene" uid="uid://cxm8vp3qkr1ya" path="res://trial4/physics_settings_window.tscn" id="13_physics_window"]
+[ext_resource type="Script" uid="uid://blhlexix6xa6m" path="res://trial4/file_manager.gd" id="14_file_manager"]
+[ext_resource type="PackedScene" path="res://trial4/new_canvas_dialog.tscn" id="15_new_canvas_dialog"]
 
 [node name="main4" type="Node2D"]
 script = ExtResource("1_bp1uf")
@@ -96,10 +98,17 @@ script = ExtResource("2_sl8jp")
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
-[node name="SettingsButton" type="Button" parent="CanvasLayer"]
+[node name="FileMenuButton" type="MenuButton" parent="CanvasLayer"]
 offset_left = 10.0
 offset_top = 10.0
-offset_right = 90.0
+offset_right = 70.0
+offset_bottom = 50.0
+text = "File ▼"
+
+[node name="SettingsButton" type="Button" parent="CanvasLayer"]
+offset_left = 80.0
+offset_top = 10.0
+offset_right = 160.0
 offset_bottom = 50.0
 text = "⚙ Settings"
 
@@ -283,6 +292,17 @@ horizontal_alignment = 1
 
 [node name="PhysicsSettingsWindow" parent="." instance=ExtResource("13_physics_window")]
 
+[node name="file_manager" type="Node" parent="."]
+script = ExtResource("14_file_manager")
+
+[node name="NewCanvasDialog" parent="." instance=ExtResource("15_new_canvas_dialog")]
+
+[node name="ExportFileDialog" type="FileDialog" parent="."]
+title = "Export PNG"
+size = Vector2i(600, 400)
+access = 2
+filters = PackedStringArray("*.png ; PNG Image")
+
 [connection signal="pressed" from="CanvasLayer/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/watercolor_button" to="brush_manager" method="_on_watercolor_button_pressed"]
 [connection signal="pressed" from="CanvasLayer/VBoxContainer/pencil_button" to="brush_manager" method="_on_pencil_button_pressed"]
@@ -293,3 +313,4 @@ horizontal_alignment = 1
 [connection signal="value_changed" from="CanvasLayer/brush_size_popup/brush_size_control/brush_size_slider" to="brush_manager" method="_on_brush_size_slider_changed"]
 [connection signal="value_changed" from="CanvasLayer/pencil_size_popup/pencil_size_control/pencil_size_slider" to="brush_manager" method="_on_pencil_size_slider_changed"]
 [connection signal="value_changed" from="CanvasLayer/eraser_size_popup/eraser_size_control/eraser_size_slider" to="brush_manager" method="_on_eraser_size_slider_changed"]
+[connection signal="file_selected" from="ExportFileDialog" to="." method="_on_export_file_selected"]

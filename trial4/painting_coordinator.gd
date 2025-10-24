@@ -1,9 +1,12 @@
 # painting_coordinator.gd (GPU-accelerated version)
 extends Node
 
+# --- Signals ---
+signal canvas_reinitialized
+
 # --- Canvas Properties ---
-const CANVAS_WIDTH := 256
-const CANVAS_HEIGHT := 256
+var CANVAS_WIDTH := 256
+var CANVAS_HEIGHT := 256
 const MAX_WATER_AMOUNT := 1.0
 
 @onready var physics_simulator = $physics_simulator
@@ -23,31 +26,19 @@ var mobile_layer_sprite: Sprite2D
 var static_layer_sprite: Sprite2D
 var pencil_layer_sprite: Sprite2D
 
-# --- Image Data (The actual data for the simulation) ---
+# --- Image Data (CPU-based layers only) ---
 var background_image: Image
-var water_read_buffer: Image
-var water_write_buffer: Image
-var mobile_read_buffer: Image
-var mobile_write_buffer : Image
-var static_read_buffer: Image
-var static_write_buffer: Image
 var pencil_image: Image
-var absorbency_map : Image
-var displacement_map : Image
-var inertia_read_buffer: Image
-var inertia_write_buffer: Image
+var absorbency_map: Image
 
-# --- Textures (The GPU version of the data for display) ---
+# --- Textures (CPU-based layers only) ---
 var background_texture: ImageTexture
-var water_texture: ImageTexture
-var mobile_texture: ImageTexture
-var static_texture: ImageTexture
 var pencil_texture: ImageTexture
 
 # --- Status Flags ---
-var _dirty_watercolor: bool = false
 var _dirty_pencil: bool = false
 var active_brush_node: Node = null
+var _water_layer_visible: bool = false
 
 # --- Simulation Parameters ---
 const GRAVITY_STRENGTH = 9.8 # Base gravity constant
@@ -119,6 +110,20 @@ func _ready():
 		# Set up GPU texture display (no CPU readback!)
 		_setup_gpu_texture_display()
 
+	# Set layer z-order (back to front)
+	background_sprite.z_index = 0
+	static_layer_sprite.z_index = 1
+	mobile_layer_sprite.z_index = 2
+	pencil_layer_sprite.z_index = 3
+	water_layer_sprite.z_index = 99  # Debug layer, hidden by default
+
+	# Ensure correct initial visibility
+	background_sprite.visible = true
+	static_layer_sprite.visible = true
+	mobile_layer_sprite.visible = true
+	pencil_layer_sprite.visible = true
+	water_layer_sprite.visible = false
+
 	# Start dirty for initial update
 	mark_pencil_dirty()
 	_update_gravity_components()
@@ -139,72 +144,6 @@ func _process(_delta: float):
 	# Q key: Show only water layer (debug/preview feature)
 	_handle_layer_visibility_controls()
 
-
-# TODO Phase 5: Implement GPU paint upload
-# This function will need to be rewritten to upload paint data to GPU
-# For now, painting is disabled until Phase 5
-func paint_watercolor_pixel(x: int, y: int, color: Color, water: float, pressure: float = 1.0):
-	# TEMPORARILY DISABLED - needs GPU upload implementation
-	return
-	# Bounds check
-	if x < 0 or x >= CANVAS_WIDTH or y < 0 or y >= CANVAS_HEIGHT:
-		return
-
-	# Get current canvas state
-	var canvas_color = mobile_read_buffer.get_pixel(x, y)
-	var canvas_water = water_read_buffer.get_pixel(x, y).r
-
-	# Calculate actual water transfer
-	# Only add water up to the brush's water amount (prevents over-saturation)
-	var water_to_add = max(0.0, water - canvas_water)
-	var new_water = canvas_water + water_to_add
-	water_read_buffer.set_pixel(x, y, Color(new_water, 0, 0))
-
-	# Calculate pigment transfer ratio based on actual water transfer
-	# If water_to_add is 0 (surface already wet), no pigment transfer via water
-	# If water_to_add equals water (dry surface), full pigment transfer
-	var pigment_transfer_ratio = water_to_add / water if water > 0.0 else 0.0
-
-	# Scale the incoming pigment by the water transfer ratio
-	var transferred_pigment = Color(color.r, color.g, color.b, color.a * pigment_transfer_ratio)
-
-	# --- WET-ON-WET TECHNIQUE: Pressure-based pigment diffusion ---
-	# When surface is wet and brush has concentrated pigment, allow diffusion based on:
-	# 1. Concentration difference (brush pigment vs canvas pigment)
-	# 2. Applied pressure (harder press = more pigment forced into wet surface)
-	# 3. Surface wetness (only works on wet surfaces)
-
-	var surface_is_wet = canvas_water > 0.01  # Surface needs some water for diffusion
-
-	if surface_is_wet and pressure > 0.0:
-		# Calculate pigment mass difference (alpha represents concentration/mass)
-		var brush_concentration = color.a
-		var canvas_concentration = canvas_color.a
-		var concentration_diff = max(0.0, brush_concentration - canvas_concentration)
-
-		# Pressure-driven diffusion: proportional to pressure and concentration difference
-		# This allows adding strong color to wet surfaces by pressing hard
-		var diffusion_strength = pressure * concentration_diff * 0.5  # 0.5 is tuning factor
-
-		# Create diffusion pigment (same color as brush, scaled by diffusion strength)
-		var diffusion_pigment = Color(color.r, color.g, color.b, color.a * diffusion_strength)
-
-		# Add diffusion pigment to transferred pigment
-		transferred_pigment.a += diffusion_pigment.a
-		# Mix colors proportionally (weight by their alpha values)
-		if transferred_pigment.a > 0.0:
-			var total_mass = transferred_pigment.a
-			var water_weight = (color.a * pigment_transfer_ratio) / total_mass if total_mass > 0 else 0
-			var diffusion_weight = (diffusion_pigment.a) / total_mass if total_mass > 0 else 0
-			transferred_pigment.r = color.r * water_weight + diffusion_pigment.r * diffusion_weight
-			transferred_pigment.g = color.g * water_weight + diffusion_pigment.g * diffusion_weight
-			transferred_pigment.b = color.b * water_weight + diffusion_pigment.b * diffusion_weight
-
-	# Mix the transferred pigment (water + diffusion) with existing pigment
-	var mixed_color = PigmentMixer._mix_pigments_optical(transferred_pigment, canvas_color)
-	mobile_read_buffer.set_pixel(x, y, mixed_color)
-
-	mark_watercolor_dirty()
 
 # GPU-compatible paint upload (optimized - only upload affected region)
 func add_paint_at(pos: Vector2, color: Color, water: float, size: float, pressure: float = 1.0):
@@ -348,28 +287,24 @@ func _setup_gpu_texture_display():
 	shader_material.shader = shader
 	water_layer_sprite.material = shader_material
 
-	# Mobile layer (wet pigment)
+	# Mobile layer (wet pigment) - Use default straight alpha blending (GPU works in pigment/straight space)
 	var mobile_tex_rd = Texture2DRD.new()
 	mobile_tex_rd.texture_rd_rid = physics_simulator.get_mobile_texture()
 	mobile_layer_sprite.texture = mobile_tex_rd
+	mobile_layer_sprite.material = null  # Default blend mode (straight alpha)
 
-	# Apply pigment display shader to mobile layer
-	var pigment_shader = load("res://trial4/pigment_display_shader.gdshader")
-	var pigment_material = ShaderMaterial.new()
-	pigment_material.shader = pigment_shader
-	mobile_layer_sprite.material = pigment_material
-
-	# Static layer (dry pigment)
+	# Static layer (dry pigment) - Use default straight alpha blending (GPU works in pigment/straight space)
 	var static_tex_rd = Texture2DRD.new()
 	static_tex_rd.texture_rd_rid = physics_simulator.get_static_texture()
 	static_layer_sprite.texture = static_tex_rd
+	static_layer_sprite.material = null  # Default blend mode (straight alpha)
 
-	# Apply pigment display shader to static layer too
-	var static_pigment_material = ShaderMaterial.new()
-	static_pigment_material.shader = pigment_shader
-	static_layer_sprite.material = static_pigment_material
+	# Ensure no tinting on any layer
+	for n in [background_sprite, water_layer_sprite, mobile_layer_sprite, static_layer_sprite, pencil_layer_sprite]:
+		if n:
+			n.self_modulate = Color(1, 1, 1, 1)
 
-	print("GPU texture display set up successfully (no CPU readback!)")
+	print("GPU texture display set up successfully (passthrough for pigment layers)")
 
 func _update_gravity_components():
 	var h_rad = deg_to_rad(horizontal_theta)
@@ -397,36 +332,142 @@ func set_horizontal_tilt(degrees: float):
 	horizontal_theta = degrees
 	_update_gravity_components()
 
-# No longer needed - GPU textures display automatically
-func mark_watercolor_dirty():
-	_dirty_watercolor = true
-
 func mark_pencil_dirty():
 	_dirty_pencil = true
 
 func set_active_brush(brush_node: Node):
 	self.active_brush_node = brush_node
 
-# Handle layer visibility controls (Q key for water layer preview)
+# Handle layer visibility controls (Tab key to toggle water layer preview)
 func _handle_layer_visibility_controls():
-	# Q key: While held, show ONLY water layer
-	var q_pressed = Input.is_key_pressed(KEY_Q)
+	# Tab key: Press once to toggle water layer on, press again to toggle off
+	if Input.is_action_just_pressed("toggle_water_layer"):
+		_water_layer_visible = !_water_layer_visible
 
-	if q_pressed:
-		# Hide mobile and static layers to show only water
-		if is_instance_valid(mobile_layer_sprite):
-			mobile_layer_sprite.visible = false
-		if is_instance_valid(static_layer_sprite):
-			static_layer_sprite.visible = false
-		# Show water layer
-		if is_instance_valid(water_layer_sprite):
-			water_layer_sprite.visible = true
-	else:
-		# Restore normal visibility: show mobile and static, hide water
-		if is_instance_valid(mobile_layer_sprite):
-			mobile_layer_sprite.visible = true
-		if is_instance_valid(static_layer_sprite):
-			static_layer_sprite.visible = true
-		# Hide water layer (normal painting view)
-		if is_instance_valid(water_layer_sprite):
-			water_layer_sprite.visible = false
+		if _water_layer_visible:
+			# Hide mobile and static layers to show only water
+			if is_instance_valid(mobile_layer_sprite):
+				mobile_layer_sprite.visible = false
+			if is_instance_valid(static_layer_sprite):
+				static_layer_sprite.visible = false
+			# Show water layer
+			if is_instance_valid(water_layer_sprite):
+				water_layer_sprite.visible = true
+		else:
+			# Restore normal visibility: show mobile and static, hide water
+			if is_instance_valid(mobile_layer_sprite):
+				mobile_layer_sprite.visible = true
+			if is_instance_valid(static_layer_sprite):
+				static_layer_sprite.visible = true
+			# Hide water layer (normal painting view)
+			if is_instance_valid(water_layer_sprite):
+				water_layer_sprite.visible = false
+
+# --- File Manager Helper Methods ---
+
+# Get composite image for PNG export (CPU compositing)
+func get_composite_image() -> Image:
+	print("painting_coordinator: Creating composite image (CPU)...")
+
+	if not is_instance_valid(physics_simulator):
+		printerr("painting_coordinator: physics_simulator not valid!")
+		return null
+
+	# 1) Pull current GPU state down to CPU
+	var water_img: Image = physics_simulator.download_water_layer()   # FORMAT_RF (not used for final, but available)
+	var mobile_img: Image = physics_simulator.download_mobile_layer()  # FORMAT_RGBAF
+	var static_img: Image = physics_simulator.download_static_layer()  # FORMAT_RGBAF
+
+	if not mobile_img or not static_img:
+		printerr("painting_coordinator: Failed to download GPU layers!")
+		return null
+
+	# 2) Create final target (RGBA8) and start with white paper
+	var width := CANVAS_WIDTH
+	var height := CANVAS_HEIGHT
+	var composite := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	composite.fill(Color.WHITE)
+
+	# 3) Blit the background "paper" if you keep a custom background image
+	if background_image != null:
+		composite.blit_rect(
+			background_image,
+			Rect2i(0, 0, background_image.get_width(), background_image.get_height()),
+			Vector2i(0, 0)
+		)
+
+	# 4) Composite dry pigment (static), wet pigment (mobile), then pencil
+	#    Static/mobile images are RGBAF "pigment" images where A is pigment mass.
+	#    We'll alpha-blend them over paper.
+	_composite_layer(composite, static_img)
+	_composite_layer(composite, mobile_img)
+
+	if pencil_image != null:
+		_composite_layer(composite, pencil_image)
+
+	print("painting_coordinator: Composite image created (CPU)")
+	return composite
+
+# Helper: blend 'layer' over 'base' using standard src-over
+func _composite_layer(base: Image, layer: Image) -> void:
+	var w = min(base.get_width(), layer.get_width())
+	var h = min(base.get_height(), layer.get_height())
+	for y in range(h):
+		for x in range(w):
+			var dst := base.get_pixel(x, y)
+			var src := layer.get_pixel(x, y)  # works for RGBA8 and RGBAF
+
+			var a := src.a
+			if a <= 0.0:
+				continue
+
+			var out_col := Color(
+				src.r * a + dst.r * (1.0 - a),
+				src.g * a + dst.g * (1.0 - a),
+				src.b * a + dst.b * (1.0 - a),
+				1.0
+			)
+			base.set_pixel(x, y, out_col)
+
+# Reinitialize canvas with new dimensions (for New Canvas)
+func reinitialize_canvas(width: int, height: int):
+	print("painting_coordinator: Reinitializing canvas to ", width, "×", height)
+
+	# Update canvas dimensions first
+	CANVAS_WIDTH = width
+	CANVAS_HEIGHT = height
+
+	# Clear and reinitialize background
+	background_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
+	background_image.fill(Color.WHITE)
+	background_texture = ImageTexture.create_from_image(background_image)
+	if is_instance_valid(background_sprite):
+		background_sprite.texture = background_texture
+
+	# Clear and reinitialize pencil layer
+	pencil_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
+	pencil_image.fill(Color(0, 0, 0, 0))
+	pencil_texture = ImageTexture.create_from_image(pencil_image)
+	if is_instance_valid(pencil_layer_sprite):
+		pencil_layer_sprite.texture = pencil_texture
+
+	# Reinitialize absorbency map
+	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
+	for y in range(CANVAS_HEIGHT):
+		for x in range(CANVAS_WIDTH):
+			var random_absorbency = 0.15
+			absorbency_map.set_pixel(x, y, Color(random_absorbency, 0, 0))
+
+	# Reinitialize GPU physics simulator with new dimensions
+	if is_instance_valid(physics_simulator):
+		var success = physics_simulator.init_gpu(CANVAS_WIDTH, CANVAS_HEIGHT, absorbency_map)
+		if not success:
+			printerr("painting_coordinator: Failed to reinitialize GPU physics simulator!")
+			return
+
+		# Set up GPU texture display
+		_setup_gpu_texture_display()
+		print("painting_coordinator: Canvas reinitialized successfully")
+
+		# Emit signal to let other systems know canvas was reinitialized
+		emit_signal("canvas_reinitialized")

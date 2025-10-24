@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A digital watercolor painting tool built in **Godot Engine 4.4** that simulates realistic watercolor behavior through physics-based fluid dynamics. The project implements water flow, pigment transport, deposition, and evaporation to create authentic watercolor effects.
+A digital watercolor painting tool built in **Godot Engine 4.4** that simulates realistic watercolor behavior through GPU-accelerated physics-based fluid dynamics. The project implements water flow, pigment transport, deposition, and evaporation using compute shaders to create authentic watercolor effects.
 
 ## Running the Project
 
@@ -14,7 +14,7 @@ A digital watercolor painting tool built in **Godot Engine 4.4** that simulates 
 - Press F5 to run the project, or use the "Play" button in the Godot editor
 - Press Escape to quit (mapped to the "Quit" input action)
 
-**Current working version:** `trial3/` directory contains the active implementation
+**Current working version:** `trial4/` directory contains the active GPU-accelerated implementation
 
 ## Architecture
 
@@ -24,174 +24,261 @@ The codebase is organized into progressive "trials" representing development ite
 
 - **trial1/**: Initial Godot learning prototype
 - **trial2/**: Introduced improved data structures for extensibility
-- **trial3/**: **Active version** - CPU implementation with GPU-friendly logic, improved physics simulation
-- **trial4/**: Planned - Will convert trial3 to shaders for scaling
+- **trial3/**: CPU implementation with GPU-friendly logic, completed physics algorithms
+- **trial4/**: **Active version** - Full GPU implementation using compute shaders (GLSL)
 
-When making changes, work in `trial3/` unless specifically adding new features that require a new trial iteration.
+When making changes, work in `trial4/` as this is the current production version.
 
-### Core Components (trial3/)
+### Core Components (trial4/)
 
-#### 1. main_3.gd
-Entry point that handles quit input only. All application logic is delegated to child nodes.
+#### 1. main_4.gd
+Entry point that handles quit input and settings window toggle. All application logic is delegated to child nodes.
 
 #### 2. painting_coordinator.gd
-Central orchestrator managing all canvas layers and the simulation loop. Key responsibilities:
-- Manages 6 image layers (64x64 resolution): water, mobile pigment, static pigment, pencil, absorbency map, displacement map
-- Implements double-buffering (read/write buffers) for water, mobile, and static layers
-- Runs physics simulation each frame via `physics_simulator.run_simulation_step()`
-- Handles gravity tilt controls (WASD keys to adjust horizontal/vertical angles)
-- Provides `add_paint_at()` interface for brushes to add water and pigment
-- Updates GPU textures from CPU image buffers each frame
+Central orchestrator managing canvas GPU textures and the simulation loop. Key responsibilities:
+- Manages GPU textures (256×256 resolution): water, mobile pigment, static pigment, pencil, absorbency map, displacement map
+- Implements double-buffering using RenderingDevice texture pairs for physics computation
+- Runs GPU physics simulation each frame via `physics_simulator.run_simulation_step()`
+- Handles gravity tilt controls (WASD keys or physics settings window)
+- Provides `add_paint_at()` interface for brushes to add water and pigment via GPU
+- Displays computed textures directly (no CPU readback for rendering)
+- Layer visibility controls (Q key to show water layer preview)
 
 **Canvas Constants:**
-- `CANVAS_WIDTH`: 64
-- `CANVAS_HEIGHT`: 64
+- `CANVAS_WIDTH`: 256
+- `CANVAS_HEIGHT`: 256
 - `MAX_WATER_AMOUNT`: 1.0
 
-#### 3. physics_simulator.gd
-Physics engine running on CPU with GPU-ready algorithms. Contains the entire watercolor simulation:
+#### 3. physics_simulator_gpu.gd
+GPU-accelerated physics engine using compute shaders. All physics runs on GPU via RenderingDevice:
 
 **Simulation Pipeline (run_simulation_step):**
-1. Evaporation - water gradually evaporates based on exposed surface area
-2. Water displacement calculation - 4-directional forces (right, left, down, up) computed from:
+1. Evaporation shader - water gradually evaporates based on exposed surface area
+2. Water displacement calculation shader - 4-directional forces (right, left, down, up) from:
    - Gravity (adjustable tilt)
-   - Surface tension (looks ahead 10 pixels, stops at dry boundaries)
+   - Surface tension (looks ahead multiple pixels, stops at dry boundaries)
    - Spreading force (immediate neighbors)
-3. Water movement execution - moves water and carries pigment proportionally
-4. Deposition - mobile pigment settles onto static layer based on water content and absorbency
-5. Diffusion - (currently disabled) would spread static pigment
+3. Water inflow application shader - moves water and carries pigment proportionally
+4. Deposition shader - mobile pigment settles onto static layer based on water content and absorbency
+5. Diffusion shader - spreads static pigment (optional)
 
-**Key Parameters (exported for live tuning):**
-- `S`: Surface tension coefficient (tune with R/F keys)
-- `SP`: Spreading force coefficient (tune with T/G keys)
+**Compute Shaders (trial4/shaders/):**
+- `evaporation.glsl` - Water evaporation
+- `calculate_displacement.glsl` - Force computation
+- `apply_inflow.glsl` - Water and pigment movement
+- `deposition.glsl` - Pigment settling
+- `diffusion.glsl` - Pigment spreading
+- `add_paint.glsl` - Brush stroke application
+
+**Key Parameters (adjustable via physics settings window):**
+- `S`: Surface tension coefficient
+- `SP`: Spreading force coefficient
+- `canceling_power`: Force cancellation between opposing flows
+- `acceleration_power`: Water acceleration scaling
+- `EVAPORATION_CONST`: Evaporation rate
 - `HOLD_THRESHOLD`: Force needed to wet a dry pixel (5.0)
 - `k_deposit_base`: Deposition speed (1.0)
 - `w_scale`: Water wetness scale (0.2)
-- `DRY_PIXEL_LIMIT`: Threshold below which pixel is "dry" (0.0001)
+- `DIFFUSION_RATE`: Pigment diffusion rate
+- `diffusion_limiter`: Limits diffusion amount
 
 **Implementation Notes:**
-- Three displacement calculation methods exist; currently uses `_calculate_water_displacement_4_directional()`
-- Pigment transport uses `_apply_water_displacement_with_pigment()` (outflow model)
-- An inflow model also exists (`_apply_water_displacement_with_pigment_inflow()`) but is not currently active
-- Surface tension looks ahead up to 10 pixels until hitting dry boundary
-- Forces split into 4 directions to avoid checkerboard artifacts
+- All physics computation happens on GPU, no CPU processing
+- RenderingDevice API used for compute shader dispatch
+- Double-buffered textures for read/write operations
+- Uniform sets manage shader parameters and texture bindings
 
-#### 4. pigment_mixer.gd (Autoloaded as PigmentMixer)
-Global singleton providing optical color mixing based on Beer-Lambert law:
-- `_mix_pigments_optical()`: Mixes two pigments using optical density, mass-weighted
-- `_alpha_to_mass()` / `_mass_to_alpha()`: Convert between visual alpha and abstract pigment mass
-- Uses optical density calculations to simulate subtractive color mixing (light absorption)
-- `K_ABSORPTION`: Controls paint opacity (0.5)
-
-#### 5. brush_manager.gd
-Handles input routing, brush switching, and pigment mixing UI. Responsibilities:
-- Routes mouse input to active brush based on canvas-relative coordinates
-- Manages CMY (Cyan, Magenta, Yellow) pigment selection with individual alpha controls
-- Mixes selected pigments using simple multiplicative RGB blending for hue, layered alpha for concentration
-- Updates watercolor brush properties when pigment or water settings change
+#### 4. brush_manager.gd
+Handles input routing, brush switching, cursor rendering, and UI blocking. Responsibilities:
+- Routes mouse/tablet input to active brush with pressure support
+- Manages brush cursor sprites (dual-ring for watercolor showing pressure range)
+- Blocks input when mouse is over UI elements (`_is_mouse_over_ui()`)
+- Updates cursor position from both motion and button events (prevents ghost lines)
 - Switches between watercolor, pencil, and eraser brushes
+- Manages color picker and brush size controls
 
-#### 6. watercolor_brush.gd
-Applies paint dabs with randomized variation:
-- Uses `coordinator.add_paint_at()` to stamp paint onto canvas
-- Randomizes position (within 0.5× brush radius), size (0.7-1.3×), pigment concentration (0.8-1.2× alpha), water (0.9-1.1×)
-- Applies multiple dabs per frame when dragging
+**Cursor System:**
+- `brush_cursor_outer`: Shows maximum brush size (full pressure)
+- `brush_cursor_inner`: Shows minimum brush size (light pressure)
+- `pencil_cursor`: Single ring for pencil
+- `eraser_cursor`: Single ring for eraser
+- All cursors use procedurally generated circle textures
+
+#### 5. watercolor_brush.gd
+Applies paint with pressure sensitivity and stroke masking:
+- Uses `coordinator.add_paint_at()` to apply paint via GPU shader
+- Supports tablet pressure for size variation (`pressure_affects_size`)
+- Stroke mask prevents painting same pixel twice in one stroke
+- Interpolates between positions for smooth strokes
 - Color's alpha channel represents pigment concentration
 
-#### 7. Other Brushes
-- `pencil_brush.gd`: Draws on separate pencil layer using `draw_line_on_pencil_layer()`
+**Pressure Mapping:**
+- `min_pressure_size_mult`: 0.1 (10% size at light pressure)
+- `max_pressure_size_mult`: 2.0 (200% size at full pressure)
+- Pressure read from `InputEventMouseMotion.pressure` for tablets
+- Falls back to 1.0 for mouse input
+
+#### 6. Other Brushes
+- `pencil_brush.gd`: Draws on separate pencil layer
 - `eraser_brush.gd`: Clears pencil layer
+
+#### 7. camera_2d.gd
+Handles viewport navigation:
+- Middle mouse button for panning
+- Mouse wheel for zoom (in/out)
+- Polls `Input.is_mouse_button_pressed()` for persistent panning state
+- Adjusts pan speed based on zoom level
+
+#### 8. physics_settings_window.gd & physics_settings_window.tscn
+Real-time physics parameter adjustment UI:
+- PopupPanel with organized parameter sections
+- Canvas Orientation (vertical/horizontal tilt)
+- Water Parameters (6 sliders)
+- Diffusion Parameters (4 sliders)
+- Close button (✕) in title bar
+- All parameters update live during simulation
 
 ### Data Flow
 
 ```
-User Input
+User Input (with tablet pressure)
     ↓
-brush_manager (routes input)
+brush_manager (routes input, blocks UI, updates cursor)
     ↓
-active_brush (e.g., watercolor_brush)
+active_brush (e.g., watercolor_brush with pressure)
     ↓
-painting_coordinator.add_paint_at() (adds water + pigment to canvas)
+painting_coordinator.add_paint_at() (uploads to GPU via add_paint shader)
     ↓
-painting_coordinator._process() → physics_simulator.run_simulation_step()
+painting_coordinator._process() → physics_simulator_gpu.run_simulation_step()
     ↓
-    1. Evaporation (water layer)
-    2. Calculate forces (gravity + surface tension + spreading)
-    3. Move water + pigment (mobile layer follows water)
-    4. Deposition (mobile → static layer)
+    GPU Compute Shaders:
+    1. Evaporation (evaporation.glsl)
+    2. Calculate forces (calculate_displacement.glsl)
+    3. Move water + pigment (apply_inflow.glsl)
+    4. Deposition (deposition.glsl)
     ↓
-Update GPU textures for rendering
+Display GPU textures directly (no CPU readback)
 ```
 
-### Image Layer Formats
+### GPU Texture Formats
 
-- **Water layer**: `FORMAT_RF` (single float) - stores water amount
-- **Mobile/Static pigment layers**: `FORMAT_RGBAF` (RGBA floats) - RGB = pigment hue, A = pigment mass (encoded)
-- **Absorbency map**: `FORMAT_RF` - per-pixel paper absorbency (randomized 0.1-0.2)
-- **Displacement map**: `FORMAT_RGBAF` - RGBA stores forces (right, left, down, up)
+All textures use RenderingDevice format `RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT`:
+
+- **Water layer**: R channel = water amount, GBA unused
+- **Mobile/Static pigment layers**: RGBA = pigment color with alpha as concentration
+- **Absorbency map**: R channel = paper absorbency (randomized 0.1-0.2)
+- **Displacement map**: RGBA = forces (right, left, down, up)
 
 ## Common Development Tasks
 
 ### Tuning Physics Parameters
 
-**Real-time parameter adjustment (while running):**
-- R/F keys: Increase/decrease surface tension (S)
-- T/G keys: Increase/decrease spreading force (SP)
-- WASD keys: Adjust gravity tilt angles
+**Real-time parameter adjustment:**
+- Open physics settings window via "⚙ Settings" button (top-left)
+- Adjust sliders to see immediate effects
+- All parameters update GPU shaders in real-time
 
-**Modifying physics constants:**
-Edit exported variables in `trial3/physics_simulator.gd` via Godot Inspector, or modify constants directly in the script:
-- `DIFFUSION_RATE`, `EVAPORATION_CONST`, `HOLD_THRESHOLD`, `k_deposit_base`, `w_scale`, `K_ABSORPTION`
+**Layer Visibility:**
+- Hold Q key to preview water layer only (hides pigment layers)
+- Release Q to return to normal view
 
-### Switching Physics Algorithms
+### Modifying Compute Shaders
 
-In `physics_simulator.gd`, `run_simulation_step()` has commented alternatives:
-- **Displacement calculation**: Switch between `_calculate_water_displacement()`, `_calculate_water_displacement_4_directional()`, or `_calculate_water_displacement_4_dir_redistribution()`
-- **Water movement**: Switch between `_apply_water_displacement()`, `_apply_water_displacement_with_pigment()`, or `_apply_water_displacement_with_pigment_inflow()`
-- **Diffusion**: Currently disabled; uncomment `_simulate_diffusion()` call to enable static layer pigment diffusion
+Shaders are in `trial4/shaders/`. After editing:
+1. Godot will reimport the shader automatically
+2. GPU simulator will reload shader on next run
+3. Check console for compilation errors
+
+**Shader Structure:**
+```glsl
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0, rgba32f) uniform readonly image2D input_texture;
+layout(set = 0, binding = 1, rgba32f) uniform writeonly image2D output_texture;
+
+layout(push_constant) uniform Params {
+    float param1;
+    float param2;
+} params;
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    // shader logic here
+}
+```
 
 ### Adding New Brush Types
 
-1. Create a new `.gd` script in `trial3/`
-2. Implement `activate(coordinator)`, `deactivate()`, and `handle_input(event, mouse_pos_img_space)` methods
-3. Use `coordinator.add_paint_at()` for watercolor effects or `coordinator.draw_line_on_pencil_layer()` for dry media
-4. Add brush node to scene and reference in `brush_manager.gd` export paths
-5. Add button press handler in `brush_manager.gd` to call `_set_active_brush()`
+1. Create a new `.gd` script in `trial4/`
+2. Implement `activate(coordinator)`, `deactivate()`, `cancel_stroke()`, and `handle_input(event, mouse_pos_img_space)` methods
+3. Use `coordinator.add_paint_at()` for watercolor effects
+4. Add brush node to main4.tscn and reference in `brush_manager.gd` export paths
+5. Add button and press handler in `brush_manager.gd`
+6. Create custom cursor sprite if needed
 
-### Debugging Visualization
+### Debugging GPU Shaders
 
-Water layer uses a custom shader (`trial3/water_debug_shader.gdshader`) for visualization. To modify or disable:
-- Edit the shader file to change water rendering
-- Comment out shader assignment in `painting_coordinator.gd` `_ready()` to show raw water data
+- Check console output for shader compilation errors
+- Use `print()` statements in GDScript to verify data being sent to shaders
+- Water layer visualization uses a debug shader for rendering
+- Enable Godot's verbose output for RenderingDevice errors
 
 ## Important Implementation Details
 
-### Double Buffering
-Water, mobile, and static layers use read/write buffer pairs. After each simulation step, buffers are swapped via `_swap_water_buffers()`, `_swap_mobile_buffers()`, `_swap_static_buffers()`. Always read from `*_read` and write to `*_write` during simulation.
+### GPU Double Buffering
+All physics textures use read/write pairs. Compute shaders read from one texture and write to another, then textures are swapped. This prevents read/write conflicts.
 
-### Force Calculation and Dry Boundaries
-Surface tension looks ahead up to 10 pixels in each direction but stops at dry pixels (`water < DRY_PIXEL_LIMIT`). This creates natural boundaries and prevents water from "jumping" across dry areas.
+### Pressure Sensitivity
+Watercolor brush reads tablet pressure from `InputEventMouseMotion.pressure`. The value ranges 0.0-1.0:
+- Checked with `"pressure" in event` for compatibility
+- Clamped to minimum 0.05 to prevent invisible strokes
+- Falls back to cached value for button events
+- Mouse input defaults to 1.0 (full pressure)
 
-### Pigment Transport
-Pigment moves proportionally with water. When water flows out of a pixel, pigment mass is split: movable mass follows the water, absorbed mass stays. Uses optical mixing (Beer-Lambert) via `PigmentMixer._mix_pigments_optical()`.
+### UI Input Blocking
+`brush_manager._is_mouse_over_ui()` checks if mouse is over any UI element:
+- Settings button
+- Physics settings panel
+- Color picker
+- Brush size popups
+- Alpha/water sliders
+- Tool buttons
 
-### Deposition Mechanism
-Two modes:
-- **Dry deposition**: When water < DRY_PIXEL_LIMIT, all mobile pigment instantly deposits to static layer
-- **Wet deposition**: Exponential deposition rate based on water content and absorbency: `rate = k_deposit_base × absorbency × (w_scale / (water + w_scale))`
+When over UI, input is blocked from reaching canvas (prevents accidental painting).
 
-### Coordinate Systems
-- Canvas images are 64×64, top-left origin
-- Sprite2D layers have `centered = false` to align with image coordinates
-- Mouse input is converted to image space via `layer_for_mouse_pos.to_local(global_mouse_position)`
+### Cursor Tracking
+Position tracked in two places:
+- `_last_world_pos`: Updated from motion events AND button events
+- Button event updates prevent "ghost line" bug when windows steal focus
+- Cursor sprites positioned at `_last_world_pos` every frame in `_process()`
 
-## Future Work (from README.md)
+### Compute Shader Dispatch
+Shaders dispatched in 8×8 work groups. For 256×256 canvas:
+- Dispatch groups: `(256/8, 256/8, 1)` = `(32, 32, 1)`
+- Each invocation processes one pixel
+- `gl_GlobalInvocationID.xy` gives pixel coordinates
 
-- Broader brush inputs (pressure sensitivity, stroke speed)
-- Velocity map to reduce water oscillation
-- Convert to GPU shaders (trial4) to support larger canvas sizes
-- Lifting/whitening brush for undoing work
-- Expanded pencil range
+### File Organization
+Active files only:
+- `_archive/` folder contains old CPU implementations and test files
+- Only GPU versions are used in production
+
+## Future Work
+
+Based on `trial4/NEXT_TASKS.md`:
+
+**High Priority:**
+- Task 1B: Layer toggle buttons (manual UI controls for layer visibility)
+- Task 2: Faster brush input (batch stroke upload for better performance)
+- Task 5: Save/Load functionality (preserve and restore paintings)
+- Task 6: Pigment lifting brush (digital advantage - remove/lighten pigment)
+
+**Lower Priority:**
+- Support stroke speed variation
+- Implement velocity map to reduce water oscillation
+- Scale canvas size further (currently 256×256, can go larger with optimization)
+- Expand pencil input range
 - UI improvements (snapshot/history)
-- Load/save functionality
 - Web performance optimization

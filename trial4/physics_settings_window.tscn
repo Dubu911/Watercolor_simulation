@@ -7,6 +7,7 @@ title = "Physics Settings"
 initial_position = 1
 size = Vector2i(500, 700)
 visible = false
+popup_window = false
 script = ExtResource("1_physics_settings")
 
 [node name="MarginContainer" type="MarginContainer" parent="."]
@@ -24,9 +25,18 @@ grow_vertical = 2
 layout_mode = 2
 theme_override_constants/separation = 15
 
-[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+[node name="TitleRow" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="MarginContainer/VBoxContainer/TitleRow"]
+layout_mode = 2
+size_flags_horizontal = 3
 text = "Physics Parameters"
+theme_override_font_sizes/font_size = 20
+
+[node name="CloseButton" type="Button" parent="MarginContainer/VBoxContainer/TitleRow"]
+layout_mode = 2
+text = "✕"
 theme_override_font_sizes/font_size = 20
 
 [node name="HSeparator1" type="HSeparator" parent="MarginContainer/VBoxContainer"]
@@ -336,3 +346,4 @@ text = "0.20"
 [connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DiffusionLimiter/Slider" to="." method="_on_diffusion_limiter_changed"]
 [connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/DepositBase/Slider" to="." method="_on_deposit_base_changed"]
 [connection signal="value_changed" from="MarginContainer/VBoxContainer/ScrollContainer/ParametersVBox/DiffusionSection/WScale/Slider" to="." method="_on_w_scale_changed"]
+[connection signal="pressed" from="MarginContainer/VBoxContainer/TitleRow/CloseButton" to="." method="_on_close_button_pressed"]

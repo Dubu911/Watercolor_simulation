@@ -1,0 +1,76 @@
+[gd_scene format=3]
+
+[node name="NewCanvasDialog" type="AcceptDialog"]
+title = "New Canvas"
+size = Vector2i(300, 200)
+ok_button_text = "Create"
+exclusive = true
+transient = true
+unresizable = true
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -49.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="WarningLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "⚠ This will clear the current canvas!"
+theme_override_colors/font_color = Color(1, 0.5, 0, 1)
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="DimensionsLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Canvas Dimensions:"
+theme_override_font_sizes/font_size = 14
+
+[node name="WidthRow" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBoxContainer/WidthRow"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Width:"
+
+[node name="WidthSpinBox" type="SpinBox" parent="VBoxContainer/WidthRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 64.0
+max_value = 1024.0
+step = 64.0
+value = 256.0
+
+[node name="HeightRow" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="VBoxContainer/HeightRow"]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+text = "Height:"
+
+[node name="HeightSpinBox" type="SpinBox" parent="VBoxContainer/HeightRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 64.0
+max_value = 1024.0
+step = 64.0
+value = 256.0
+
+[node name="HSeparator2" type="HSeparator" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="InfoLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Recommended: 256×256 or 512×512
+Larger sizes may impact performance."
+theme_override_font_sizes/font_size = 10

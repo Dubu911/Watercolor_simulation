@@ -27,6 +27,9 @@ var canvas_height := 0
 # --- RenderingDevice ---
 var rd: RenderingDevice
 
+# --- Pipeline Cache ---
+var _pipelines_ready := false
+
 # --- GPU Texture IDs (RIDs) ---
 var water_read_tex: RID
 var water_write_tex: RID
@@ -67,9 +70,26 @@ var add_paint_uniform_set: RID
 # --- Live tuning ---
 var values_changed_this_frame := false
 
+# --- Q key evaporation boost ---
+var _saved_evaporation_const: float = 0.01
+var _evaporation_boosted: bool = false
+
 func _process(delta: float):
 	var change_speed = 0.1 * delta
 	values_changed_this_frame = false
+
+	# Q key: Boost evaporation to 1.0 while held
+	if Input.is_key_pressed(KEY_Q):
+		if not _evaporation_boosted:
+			_saved_evaporation_const = EVAPORATION_CONST
+			EVAPORATION_CONST = 1.0
+			_evaporation_boosted = true
+			print("Evaporation boosted to 1.0 (saved: %.4f)" % _saved_evaporation_const)
+	else:
+		if _evaporation_boosted:
+			EVAPORATION_CONST = _saved_evaporation_const
+			_evaporation_boosted = false
+			print("Evaporation restored to %.4f" % EVAPORATION_CONST)
 
 	if Input.is_key_pressed(KEY_R):
 		canceling_power += change_speed
@@ -103,15 +123,17 @@ func init_gpu(p_width: int, p_height: int, absorbency_data: Image) -> bool:
 
 	print("GPU RenderingDevice acquired successfully")
 
-	# Create GPU textures
+	# (Re)create textures for the new size
 	if not _create_textures(absorbency_data):
 		return false
 
-	# Load and compile compute shaders
-	if not _create_compute_pipelines():
-		return false
+	# Compile once, reuse across resizes
+	if not _pipelines_ready:
+		if not _create_compute_pipelines():
+			return false
+		_pipelines_ready = true
 
-	# Create uniform sets (bind textures to shaders)
+	# Rebuild uniform sets because they depend on the *current* textures
 	if not _create_uniform_sets():
 		return false
 
@@ -126,7 +148,8 @@ func _create_textures(absorbency_data: Image) -> bool:
 	fmt_r32f.format = RenderingDevice.DATA_FORMAT_R32_SFLOAT
 	fmt_r32f.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT | \
 						  RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT | \
-						  RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT
+						  RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT | \
+						  RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
 
 	var fmt_rgba32f := RDTextureFormat.new()
 	fmt_rgba32f.width = canvas_width
@@ -134,7 +157,8 @@ func _create_textures(absorbency_data: Image) -> bool:
 	fmt_rgba32f.format = RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT
 	fmt_rgba32f.usage_bits = RenderingDevice.TEXTURE_USAGE_STORAGE_BIT | \
 							 RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT | \
-							 RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT
+							 RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT | \
+							 RenderingDevice.TEXTURE_USAGE_CAN_COPY_FROM_BIT
 
 	# Create water textures (R32F format)
 	var empty_r32f_data := PackedFloat32Array()
@@ -192,8 +216,8 @@ func _image_to_rgba32f_bytes(img: Image) -> PackedByteArray:
 
 	for y in range(img.get_height()):
 		for x in range(img.get_width()):
-			var pixel = img.get_pixel(x, y)
-			var idx = (y * img.get_width() + x) * 4
+			var pixel: Color = img.get_pixel(x, y)
+			var idx: int = (y * img.get_width() + x) * 4
 			data[idx + 0] = pixel.r
 			data[idx + 1] = pixel.g
 			data[idx + 2] = pixel.b
@@ -203,7 +227,6 @@ func _image_to_rgba32f_bytes(img: Image) -> PackedByteArray:
 
 # Load and compile compute shaders
 func _create_compute_pipelines() -> bool:
-	# Helper function to load, compile, and create pipeline for one shader
 	var success = true
 
 	# 1. Evaporation shader
@@ -212,7 +235,6 @@ func _create_compute_pipelines() -> bool:
 		success = false
 	else:
 		evaporation_pipeline = rd.compute_pipeline_create(evaporation_shader)
-		print("✓ Evaporation shader compiled")
 
 	# 2. Displacement shader
 	displacement_shader = _compile_shader("res://trial4/shaders/calculate_displacement.glsl", "Displacement")
@@ -220,7 +242,6 @@ func _create_compute_pipelines() -> bool:
 		success = false
 	else:
 		displacement_pipeline = rd.compute_pipeline_create(displacement_shader)
-		print("✓ Displacement shader compiled")
 
 	# 3. Inflow shader
 	inflow_shader = _compile_shader("res://trial4/shaders/apply_inflow.glsl", "Inflow")
@@ -228,7 +249,6 @@ func _create_compute_pipelines() -> bool:
 		success = false
 	else:
 		inflow_pipeline = rd.compute_pipeline_create(inflow_shader)
-		print("✓ Inflow shader compiled")
 
 	# 4. Diffusion shader
 	diffusion_shader = _compile_shader("res://trial4/shaders/diffusion.glsl", "Diffusion")
@@ -236,7 +256,6 @@ func _create_compute_pipelines() -> bool:
 		success = false
 	else:
 		diffusion_pipeline = rd.compute_pipeline_create(diffusion_shader)
-		print("✓ Diffusion shader compiled")
 
 	# 5. Deposition shader
 	deposition_shader = _compile_shader("res://trial4/shaders/deposition.glsl", "Deposition")
@@ -244,7 +263,6 @@ func _create_compute_pipelines() -> bool:
 		success = false
 	else:
 		deposition_pipeline = rd.compute_pipeline_create(deposition_shader)
-		print("✓ Deposition shader compiled")
 
 	# 6. Add paint shader
 	add_paint_shader = _compile_shader("res://trial4/shaders/add_paint.glsl", "AddPaint")
@@ -252,12 +270,11 @@ func _create_compute_pipelines() -> bool:
 		success = false
 	else:
 		add_paint_pipeline = rd.compute_pipeline_create(add_paint_shader)
-		print("✓ Add paint shader compiled")
 
 	if success:
-		print("All compute shaders compiled successfully")
+		print("GPU: All 6 compute shaders compiled successfully")
 	else:
-		printerr("Some shaders failed to compile!")
+		printerr("GPU: Some shaders failed to compile!")
 
 	return success
 
@@ -842,6 +859,27 @@ func get_mobile_texture() -> RID:
 
 func get_static_texture() -> RID:
 	return static_read_tex
+
+# --- File Manager Helper Methods ---
+
+# Download GPU layer to CPU Image (for exporting)
+func download_water_layer() -> Image:
+	var img = Image.create(canvas_width, canvas_height, false, Image.FORMAT_RF)
+	var bytes = rd.texture_get_data(water_read_tex, 0)
+	img.set_data(canvas_width, canvas_height, false, Image.FORMAT_RF, bytes)
+	return img
+
+func download_mobile_layer() -> Image:
+	var img = Image.create(canvas_width, canvas_height, false, Image.FORMAT_RGBAF)
+	var bytes = rd.texture_get_data(mobile_read_tex, 0)
+	img.set_data(canvas_width, canvas_height, false, Image.FORMAT_RGBAF, bytes)
+	return img
+
+func download_static_layer() -> Image:
+	var img = Image.create(canvas_width, canvas_height, false, Image.FORMAT_RGBAF)
+	var bytes = rd.texture_get_data(static_read_tex, 0)
+	img.set_data(canvas_width, canvas_height, false, Image.FORMAT_RGBAF, bytes)
+	return img
 
 # Cleanup
 func _exit_tree():

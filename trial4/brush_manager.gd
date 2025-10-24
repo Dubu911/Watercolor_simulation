@@ -45,6 +45,13 @@ var current_water_amount: float = 0.1  # Water amount
 var _last_screen_pos: Vector2 = Vector2.ZERO
 var _last_world_pos: Vector2 = Vector2.ZERO
 
+# --- Input Cooldown (prevents ghost clicks after canvas reinit) ---
+var _eat_clicks_until_frame := -1
+
+# Helper: Set how many frames to eat clicks for
+func _set_eat_clicks_frames(n: int) -> void:
+	_eat_clicks_until_frame = Engine.get_frames_drawn() + max(1, n)
+
 
 func _ready():
 	# Get the actual nodes from the NodePaths. Add robust checks.
@@ -124,6 +131,11 @@ func _ready():
 
 	# Note: Signals are connected in the scene file (main3.tscn)
 
+	# Listen for canvas reinitialization to prevent ghost clicks
+	if painting_coordinator and painting_coordinator.has_signal("canvas_reinitialized"):
+		painting_coordinator.canvas_reinitialized.connect(func():
+			_eat_clicks_until_frame = Engine.get_frames_drawn() + 2)
+
 	# Set the initial brush and update its properties
 	if watercolor_brush:
 		_set_active_brush(watercolor_brush)
@@ -149,6 +161,12 @@ func _process(_delta: float) -> void:
 
 # IMPORTANT: use _input (not _unhandled_input) so pen hover/motion reaches us even if UI handles it
 func _input(event: InputEvent) -> void:
+	# 0) Eat clicks for a few frames after canvas reinit (prevents ghost strokes)
+	if event is InputEventMouseButton and event.pressed:
+		if Engine.get_frames_drawn() <= _eat_clicks_until_frame:
+			get_viewport().set_input_as_handled()
+			return
+
 	# 1) ALWAYS update pointer positions from motion events (even when over UI)
 	if event is InputEventMouseMotion:
 		_last_screen_pos = event.position
@@ -448,17 +466,44 @@ func _update_eraser_cursor_size():
 
 # Check if mouse position is over any UI element
 func _is_mouse_over_ui(screen_pos: Vector2) -> bool:
+	# Check File menu button
+	var file_menu_button = get_node_or_null("../CanvasLayer/FileMenuButton")
+	if is_instance_valid(file_menu_button) and file_menu_button.visible:
+		if file_menu_button.get_global_rect().has_point(screen_pos):
+			return true
+		# Also check the popup menu when it's open
+		var popup = file_menu_button.get_popup()
+		if is_instance_valid(popup) and popup.visible:
+			# PopupMenu uses global position and size
+			var popup_rect: Rect2 = Rect2(popup.position, popup.size)
+			if popup_rect.has_point(screen_pos):
+				return true
+
 	# Check settings button
 	var settings_button = get_node_or_null("../CanvasLayer/SettingsButton")
 	if is_instance_valid(settings_button) and settings_button.visible:
 		if settings_button.get_global_rect().has_point(screen_pos):
-			# print("Mouse over Settings button - blocking canvas input")
 			return true
 
-	# Check physics settings panel (now a PopupPanel, so it's in the same viewport)
-	var settings_panel = get_node_or_null("../PhysicsSettingsPanel")
-	if is_instance_valid(settings_panel) and settings_panel.visible:
-		if settings_panel.get_global_rect().has_point(screen_pos):
+	# Check physics settings window (correct path)
+	var settings_window = get_node_or_null("../PhysicsSettingsWindow")
+	if is_instance_valid(settings_window) and settings_window.visible:
+		if settings_window.get_global_rect().has_point(screen_pos):
+			return true
+
+	# Check all file dialogs (they're exclusive, but include for completeness)
+	var load_d = get_node_or_null("../LoadFileDialog")
+	var save_d = get_node_or_null("../SaveFileDialog")
+	var export_d = get_node_or_null("../ExportFileDialog")
+	for d in [load_d, save_d, export_d]:
+		if is_instance_valid(d) and d.visible:
+			if d.get_global_rect().has_point(screen_pos):
+				return true
+
+	# Check new canvas dialog
+	var new_canvas_d = get_node_or_null("../NewCanvasDialog")
+	if is_instance_valid(new_canvas_d) and new_canvas_d.visible:
+		if new_canvas_d.get_global_rect().has_point(screen_pos):
 			return true
 
 	# Check color picker

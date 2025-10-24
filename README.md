@@ -36,4 +36,4 @@ Trial4 is fully GPU-accelerated with compute shaders. Physics settings window im
 - Pressure-sensitive brush support (tablet/Wacom)
 - Layer visibility controls (Q key for water layer preview)
 - Camera controls (pan with middle mouse, zoom with scroll wheel)
-- 64x64 canvas running at interactive framerates
+- 256x256 canvas running at interactive framerates
