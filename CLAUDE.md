@@ -42,7 +42,7 @@ Central orchestrator managing canvas GPU textures and the simulation loop. Key r
 - Handles gravity tilt controls (WASD keys or physics settings window)
 - Provides `add_paint_at()` interface for brushes to add water and pigment via GPU
 - Displays computed textures directly (no CPU readback for rendering)
-- Layer visibility controls (Q key to show water layer preview)
+- Layer visibility controls (Tab key to toggle water layer, Q key for quick evaporation)
 
 **Canvas Constants:**
 - `CANVAS_WIDTH`: 256
@@ -138,6 +138,13 @@ Real-time physics parameter adjustment UI:
 - Close button (✕) in title bar
 - All parameters update live during simulation
 
+#### 9. file_manager.gd
+Handles file operations:
+- `new_canvas(width, height)`: Reinitializes canvas with custom dimensions
+- `export_png(filepath)`: Exports current painting as PNG (composites all visible layers)
+- Calls `painting_coordinator.get_composite_image()` for CPU-side layer compositing
+- **Note**: Save/load project functionality was removed; only PNG export is supported
+
 ### Data Flow
 
 ```
@@ -179,8 +186,8 @@ All textures use RenderingDevice format `RenderingDevice.DATA_FORMAT_R32G32B32A3
 - All parameters update GPU shaders in real-time
 
 **Layer Visibility:**
-- Hold Q key to preview water layer only (hides pigment layers)
-- Release Q to return to normal view
+- **Tab key**: Toggle water layer visibility on/off (press once to show, press again to hide)
+- **Q key**: Hold to temporarily boost evaporation to 1.0 for quick drying (releases when key released)
 
 ### Modifying Compute Shaders
 
@@ -267,13 +274,10 @@ Active files only:
 
 ## Future Work
 
-Based on `trial4/NEXT_TASKS.md`:
-
 **High Priority:**
-- Task 1B: Layer toggle buttons (manual UI controls for layer visibility)
-- Task 2: Faster brush input (batch stroke upload for better performance)
-- Task 5: Save/Load functionality (preserve and restore paintings)
-- Task 6: Pigment lifting brush (digital advantage - remove/lighten pigment)
+- Layer toggle buttons (manual UI controls for layer visibility - Tab key toggle implemented)
+- Faster brush input (batch stroke upload for better performance with fast strokes)
+- Pigment lifting brush (digital advantage - remove/lighten pigment)
 
 **Lower Priority:**
 - Support stroke speed variation
@@ -282,3 +286,12 @@ Based on `trial4/NEXT_TASKS.md`:
 - Expand pencil input range
 - UI improvements (snapshot/history)
 - Web performance optimization
+
+**Recently Completed:**
+- ✓ GPU compute shader implementation
+- ✓ Physics settings window with real-time parameter adjustment
+- ✓ Pressure-sensitive brush support (tablet/Wacom)
+- ✓ Tab key water layer toggle
+- ✓ Q key quick evaporation boost
+- ✓ PNG export functionality
+- ✓ UI input blocking (prevents painting when clicking UI elements)

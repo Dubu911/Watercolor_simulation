@@ -13,13 +13,13 @@ It is being developed using the [Godot Game Engine](https://godotengine.org/).
 Trial4 is fully GPU-accelerated with compute shaders. Physics settings window implemented with real-time parameter adjustment. Working on advanced features and UI improvements.
 
 ## Next Steps
-- Support broader brush inputs (pressure sensitivity - partially implemented, stroke speed)
-- Implement a velocity map to reduce oscillation in the water layer
-- Add layer visibility controls (Q key preview implemented, UI buttons pending)
+- Support broader brush inputs (pressure sensitivity - fully implemented, stroke speed pending)
+- Implement a momentum map to reduce oscillation in the water layer (implemented)
+- Batch stroke upload for improved performance with fast brush strokes
+- Add layer visibility UI buttons (Tab key toggle implemented, UI buttons pending)
 - Add a pigment lifting brush for digital workflow advantages
 - Expand pencil input range
 - Improve the UI, especially snapshot/history
-- Add load/save functionality
 - Optimize for web performance
 
 ## Trial Descriptions
@@ -34,6 +34,7 @@ Trial4 is fully GPU-accelerated with compute shaders. Physics settings window im
 - Fully GPU-accelerated using compute shaders (GLSL)
 - Physics settings window with real-time parameter adjustment
 - Pressure-sensitive brush support (tablet/Wacom)
-- Layer visibility controls (Q key for water layer preview)
+- Layer visibility controls (Tab to toggle water layer, Q to boost evaporation)
 - Camera controls (pan with middle mouse, zoom with scroll wheel)
+- PNG export functionality
 - 256x256 canvas running at interactive framerates
