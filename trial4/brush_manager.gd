@@ -4,6 +4,7 @@ extends Node
 # --- Path Managements ---
 @export var painting_coordinator_path: NodePath
 @export var watercolor_brush_path: NodePath
+@export var removing_brush_path: NodePath
 @export var pencil_brush_path: NodePath
 @export var eraser_brush_path: NodePath
 @export var layer_for_mouse_pos_path: NodePath
@@ -11,6 +12,8 @@ extends Node
 @export var color_picker_path: NodePath
 @export var brush_size_popup_path: NodePath
 @export var brush_size_value_label_path: NodePath
+@export var removing_brush_size_popup_path: NodePath
+@export var removing_brush_size_value_label_path: NodePath
 @export var pencil_size_popup_path: NodePath
 @export var pencil_size_value_label_path: NodePath
 @export var eraser_size_popup_path: NodePath
@@ -19,6 +22,7 @@ extends Node
 # --- Internal References to PathNode ---
 var painting_coordinator: Node
 var watercolor_brush: Node
+var removing_brush: Node
 var pencil_brush: Node
 var eraser_brush: Node
 var layer_for_mouse_pos: Sprite2D
@@ -26,6 +30,8 @@ var current_color_display: ColorRect
 var color_picker: ColorPicker
 var brush_size_popup: PanelContainer
 var brush_size_value_label: Label
+var removing_brush_size_popup: PanelContainer
+var removing_brush_size_value_label: Label
 var pencil_size_popup: PanelContainer
 var pencil_size_value_label: Label
 var eraser_size_popup: PanelContainer
@@ -64,6 +70,10 @@ func _ready():
 	if not watercolor_brush:
 		printerr("brush_manager ERROR: watercolor_brush not found! Check the NodePath.")
 
+	removing_brush = get_node_or_null(removing_brush_path)
+	if not removing_brush:
+		printerr("brush_manager ERROR: removing_brush not found! Check the NodePath.")
+
 	pencil_brush = get_node_or_null(pencil_brush_path)
 	if not pencil_brush:
 		printerr("brush_manager ERROR: pencil_brush not found! Check the NodePath.")
@@ -94,6 +104,14 @@ func _ready():
 	brush_size_value_label = get_node_or_null(brush_size_value_label_path) as Label
 	if not brush_size_value_label:
 		printerr("BrushManager ERROR: BrushSizeValueLabel not found!")
+
+	removing_brush_size_popup = get_node_or_null(removing_brush_size_popup_path) as PanelContainer
+	if not removing_brush_size_popup:
+		printerr("BrushManager ERROR: RemovingBrushSizePopup not found!")
+
+	removing_brush_size_value_label = get_node_or_null(removing_brush_size_value_label_path) as Label
+	if not removing_brush_size_value_label:
+		printerr("BrushManager ERROR: RemovingBrushSizeValueLabel not found!")
 
 	pencil_size_popup = get_node_or_null(pencil_size_popup_path) as PanelContainer
 	if not pencil_size_popup:
@@ -261,6 +279,15 @@ func _on_watercolor_button_pressed():
 		if is_instance_valid(brush_size_popup):
 			brush_size_popup.visible = not brush_size_popup.visible
 
+func _on_removing_brush_button_pressed():
+	if removing_brush:
+		print("brush_manager: Removing Brush selected")
+		_set_active_brush(removing_brush)
+
+		# Toggle removing brush size popup
+		if is_instance_valid(removing_brush_size_popup):
+			removing_brush_size_popup.visible = not removing_brush_size_popup.visible
+
 func _on_pencil_button_pressed():
 	if pencil_brush:
 		print("brush_manager: Pencil Brush selected")
@@ -311,6 +338,20 @@ func _on_brush_size_slider_changed(value: float):
 		_update_brush_cursor_size()
 
 		print("Brush size: ", value)
+
+# Called when removing brush size slider changes
+func _on_removing_brush_size_slider_changed(value: float):
+	if is_instance_valid(removing_brush):
+		removing_brush.base_brush_size = value
+
+		# Update the label to show current size
+		if is_instance_valid(removing_brush_size_value_label):
+			removing_brush_size_value_label.text = "%.1f" % value
+
+		# Update brush cursor size (removing brush uses same dual-ring cursor as watercolor)
+		_update_brush_cursor_size()
+
+		print("Removing brush size: ", value)
 
 # Called when pencil size slider changes
 func _on_pencil_size_slider_changed(value: float):
@@ -375,12 +416,27 @@ func _create_circle_texture(size: int, radius: float, color: Color) -> ImageText
 
 # Update brush cursor size based on current brush settings
 func _update_brush_cursor_size():
-	if not is_instance_valid(watercolor_brush) or not is_instance_valid(brush_cursor_outer) or not is_instance_valid(brush_cursor_inner):
+	if not is_instance_valid(brush_cursor_outer) or not is_instance_valid(brush_cursor_inner):
 		return
 
-	var base_size = watercolor_brush.base_brush_size
-	var min_mult = watercolor_brush.min_pressure_size_mult
-	var max_mult = watercolor_brush.max_pressure_size_mult
+	# Determine which brush to use for cursor size (watercolor or removing)
+	var active_brush = painting_coordinator.get("active_brush_node") if is_instance_valid(painting_coordinator) else null
+	var brush_to_use = null
+
+	if active_brush == watercolor_brush and is_instance_valid(watercolor_brush):
+		brush_to_use = watercolor_brush
+	elif active_brush == removing_brush and is_instance_valid(removing_brush):
+		brush_to_use = removing_brush
+	elif is_instance_valid(watercolor_brush):
+		# Default to watercolor if no active brush
+		brush_to_use = watercolor_brush
+
+	if not brush_to_use:
+		return
+
+	var base_size = brush_to_use.base_brush_size
+	var min_mult = brush_to_use.min_pressure_size_mult
+	var max_mult = brush_to_use.max_pressure_size_mult
 
 	# Outer circle shows maximum size (full pressure)
 	var max_radius = base_size * max_mult
@@ -409,8 +465,8 @@ func _update_brush_cursor_visibility(mouse_pos_img_space: Vector2, is_over_canva
 	# Get active brush
 	var active_brush = painting_coordinator.get("active_brush_node")
 
-	# Show watercolor brush cursor when watercolor is active and mouse is over canvas
-	var should_show_brush = is_over_canvas and active_brush == watercolor_brush
+	# Show watercolor brush cursor when watercolor or removing brush is active and mouse is over canvas
+	var should_show_brush = is_over_canvas and (active_brush == watercolor_brush or active_brush == removing_brush)
 	if is_instance_valid(brush_cursor_outer):
 		brush_cursor_outer.visible = should_show_brush
 	if is_instance_valid(brush_cursor_inner):

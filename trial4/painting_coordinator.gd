@@ -208,6 +208,48 @@ func add_paint_batch(pixels: Array):
 
 	physics_simulator.upload_paint_region(0, 0, water_buffer, pigment_buffer, avg_pressure)
 
+# GPU-compatible paint removal (optimized - only upload affected region)
+func remove_paint_at(pos: Vector2, size: float, removal_strength: float):
+	var i_radius = int(ceil(size))
+
+	# Calculate bounding box for this dab
+	var min_x = max(0, int(pos.x) - i_radius)
+	var max_x = min(CANVAS_WIDTH - 1, int(pos.x) + i_radius)
+	var min_y = max(0, int(pos.y) - i_radius)
+	var max_y = min(CANVAS_HEIGHT - 1, int(pos.y) + i_radius)
+
+	var region_width = max_x - min_x + 1
+	var region_height = max_y - min_y + 1
+
+	# Skip if completely out of bounds
+	if region_width <= 0 or region_height <= 0:
+		return
+
+	# Create CPU buffer ONLY for the affected region
+	var removal_buffer = Image.create(region_width, region_height, false, Image.FORMAT_RF)
+
+	# Fill with zeros (no removal)
+	removal_buffer.fill(Color(0, 0, 0))
+
+	# Paint the removal dab onto CPU buffer (in region-local coordinates)
+	for y_offset in range(-i_radius, i_radius + 1):
+		for x_offset in range(-i_radius, i_radius + 1):
+			if Vector2(x_offset, y_offset).length_squared() <= size * size:
+				var canvas_x = int(pos.x + x_offset)
+				var canvas_y = int(pos.y + y_offset)
+
+				# Check if within canvas bounds
+				if canvas_x >= min_x and canvas_x <= max_x and canvas_y >= min_y and canvas_y <= max_y:
+					# Convert to region-local coordinates
+					var region_x = canvas_x - min_x
+					var region_y = canvas_y - min_y
+
+					# Set removal amount (this is pigment mass to remove)
+					removal_buffer.set_pixel(region_x, region_y, Color(removal_strength, 0, 0))
+
+	# Upload to GPU
+	physics_simulator.upload_removal_region(min_x, min_y, removal_buffer)
+
 # GPU-compatible paint upload (optimized - only upload affected region)
 func add_paint_at(pos: Vector2, color: Color, water: float, size: float, pressure: float = 1.0):
 	var i_radius = int(ceil(size))

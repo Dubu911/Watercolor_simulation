@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://g3qlst3bodlq"
+path="res://.godot/imported/remove_paint.glsl-66eb379db6889533f20fa86945ba2b37.res"
+
+[deps]
+
+source_file="res://trial4/shaders/remove_paint.glsl"
+dest_files=["res://.godot/imported/remove_paint.glsl-66eb379db6889533f20fa86945ba2b37.res"]
+
+[params]
+

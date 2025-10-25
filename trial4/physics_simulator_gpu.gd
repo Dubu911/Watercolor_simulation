@@ -44,6 +44,7 @@ var displacement_tex: RID
 # Temporary paint buffers (for uploading brush strokes)
 var paint_water_tex: RID
 var paint_pigment_tex: RID
+var removal_mask_tex: RID
 
 # --- Compute Shader Pipeline RIDs ---
 var evaporation_shader: RID
@@ -58,6 +59,8 @@ var deposition_shader: RID
 var deposition_pipeline: RID
 var add_paint_shader: RID
 var add_paint_pipeline: RID
+var remove_paint_shader: RID
+var remove_paint_pipeline: RID
 
 # --- Uniform Sets (bind textures to shaders) ---
 var evaporation_uniform_set: RID
@@ -66,6 +69,7 @@ var inflow_uniform_set: RID
 var diffusion_uniform_set: RID
 var deposition_uniform_set: RID
 var add_paint_uniform_set: RID
+var remove_paint_uniform_set: RID
 
 # --- Live tuning ---
 var values_changed_this_frame := false
@@ -194,6 +198,9 @@ func _create_textures(absorbency_data: Image) -> bool:
 	paint_water_tex = rd.texture_create(fmt_r32f, RDTextureView.new(), [empty_r32f_data.to_byte_array()])
 	paint_pigment_tex = rd.texture_create(fmt_rgba32f, RDTextureView.new(), [empty_rgba32f_data.to_byte_array()])
 
+	# Create removal mask texture (for removing paint via compute shader)
+	removal_mask_tex = rd.texture_create(fmt_r32f, RDTextureView.new(), [empty_r32f_data.to_byte_array()])
+
 	print("GPU textures created successfully")
 	return true
 
@@ -271,8 +278,15 @@ func _create_compute_pipelines() -> bool:
 	else:
 		add_paint_pipeline = rd.compute_pipeline_create(add_paint_shader)
 
+	# 7. Remove paint shader
+	remove_paint_shader = _compile_shader("res://trial4/shaders/remove_paint.glsl", "RemovePaint")
+	if not remove_paint_shader.is_valid():
+		success = false
+	else:
+		remove_paint_pipeline = rd.compute_pipeline_create(remove_paint_shader)
+
 	if success:
-		print("GPU: All 6 compute shaders compiled successfully")
+		print("GPU: All 7 compute shaders compiled successfully")
 	else:
 		printerr("GPU: Some shaders failed to compile!")
 
@@ -324,6 +338,7 @@ func _create_uniform_sets() -> bool:
 	_create_diffusion_uniform_set()
 	_create_deposition_uniform_set()
 	_create_add_paint_uniform_set()
+	_create_remove_paint_uniform_set()
 
 	print("All uniform sets created successfully")
 	return true
@@ -557,6 +572,36 @@ func _create_add_paint_uniform_set():
 
 	add_paint_uniform_set = rd.uniform_set_create(uniforms, add_paint_shader, 0)
 
+# Remove paint shader: 3 bindings (removal_mask, mobile_buffer, static_buffer)
+func _create_remove_paint_uniform_set():
+	if remove_paint_uniform_set.is_valid():
+		rd.free_rid(remove_paint_uniform_set)
+
+	var uniforms := []
+
+	# Binding 0: removal_mask (readonly input)
+	var u0 := RDUniform.new()
+	u0.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u0.binding = 0
+	u0.add_id(removal_mask_tex)
+	uniforms.append(u0)
+
+	# Binding 1: mobile_buffer (read+write)
+	var u1 := RDUniform.new()
+	u1.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u1.binding = 1
+	u1.add_id(mobile_read_tex)
+	uniforms.append(u1)
+
+	# Binding 2: static_buffer (read+write)
+	var u2 := RDUniform.new()
+	u2.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE
+	u2.binding = 2
+	u2.add_id(static_read_tex)
+	uniforms.append(u2)
+
+	remove_paint_uniform_set = rd.uniform_set_create(uniforms, remove_paint_shader, 0)
+
 # Run simulation step on GPU
 func run_simulation_step_gpu(delta: float, g_x: float, g_y: float):
 	# Calculate work group dispatch size (8x8 work groups)
@@ -737,6 +782,27 @@ func _dispatch_add_paint(groups_x: int, groups_y: int, pressure: float):
 
 	# Note: submit/sync not needed with global RenderingDevice
 
+# Dispatch remove_paint shader
+func _dispatch_remove_paint(groups_x: int, groups_y: int):
+	var compute_list = rd.compute_list_begin()
+
+	rd.compute_list_bind_compute_pipeline(compute_list, remove_paint_pipeline)
+	rd.compute_list_bind_uniform_set(compute_list, remove_paint_uniform_set, 0)
+
+	# Pack push constants (canvas_width, canvas_height, k_absorption, eps_a)
+	var params = PackedFloat32Array([
+		float(canvas_width),
+		float(canvas_height),
+		K_ABSORPTION,
+		EPS_A
+	])
+	rd.compute_list_set_push_constant(compute_list, params.to_byte_array(), params.size() * 4)
+
+	rd.compute_list_dispatch(compute_list, groups_x, groups_y, 1)
+	rd.compute_list_end()
+
+	# Note: submit/sync not needed with global RenderingDevice
+
 # Texture swapping functions (Solution A: recreate uniform sets)
 func _swap_water_textures():
 	var temp = water_read_tex
@@ -761,6 +827,7 @@ func _swap_mobile_textures():
 	_create_diffusion_uniform_set()
 	_create_deposition_uniform_set()
 	_create_add_paint_uniform_set()  # Also uses mobile_read_tex
+	_create_remove_paint_uniform_set()  # Also uses mobile_read_tex
 
 func _swap_static_textures():
 	var temp = static_read_tex
@@ -769,6 +836,7 @@ func _swap_static_textures():
 
 	# Recreate uniform set that uses static textures
 	_create_deposition_uniform_set()
+	_create_remove_paint_uniform_set()  # Also uses static_read_tex
 
 func _swap_inertia_textures():
 	var temp = inertia_read_tex
@@ -849,6 +917,51 @@ func upload_paint_region(x: int, y: int, water_data: Image, pigment_data: Image,
 	var groups_x = int(ceil(float(canvas_width) / 8.0))
 	var groups_y = int(ceil(float(canvas_height) / 8.0))
 	_dispatch_add_paint(groups_x, groups_y, pressure)
+
+# Upload removal data from CPU to GPU (for removing brush strokes)
+# x, y = top-left corner of the region in canvas space
+# removal_data = Image containing the removal mask (how much mass to remove per pixel)
+func upload_removal_region(x: int, y: int, removal_data: Image):
+	var region_width = removal_data.get_width()
+	var region_height = removal_data.get_height()
+
+	# Convert Image to GPU-compatible byte array
+	var removal_bytes = _image_to_r32f_bytes(removal_data)
+
+	# Clear removal mask texture first (fill with zeros)
+	var empty_removal = PackedFloat32Array()
+	empty_removal.resize(canvas_width * canvas_height)
+	empty_removal.fill(0.0)
+
+	rd.texture_update(removal_mask_tex, 0, empty_removal.to_byte_array())
+
+	# Now upload the region data to the correct position
+	var full_removal = PackedFloat32Array()
+	full_removal.resize(canvas_width * canvas_height)
+	full_removal.fill(0.0)
+
+	# Copy region data into full buffer at offset
+	for ry in range(region_height):
+		for rx in range(region_width):
+			var canvas_x = x + rx
+			var canvas_y = y + ry
+
+			if canvas_x >= 0 and canvas_x < canvas_width and canvas_y >= 0 and canvas_y < canvas_height:
+				var canvas_idx = canvas_y * canvas_width + canvas_x
+				var region_idx = ry * region_width + rx
+
+				# Copy removal amount
+				var region_removal_bytes = removal_bytes.slice(region_idx * 4, region_idx * 4 + 4)
+				var region_removal_value = region_removal_bytes.decode_float(0)
+				full_removal[canvas_idx] = region_removal_value
+
+	# Upload full buffer with region data embedded
+	rd.texture_update(removal_mask_tex, 0, full_removal.to_byte_array())
+
+	# Run remove_paint compute shader
+	var groups_x = int(ceil(float(canvas_width) / 8.0))
+	var groups_y = int(ceil(float(canvas_height) / 8.0))
+	_dispatch_remove_paint(groups_x, groups_y)
 
 # Get texture RIDs for display
 func get_water_texture() -> RID:
