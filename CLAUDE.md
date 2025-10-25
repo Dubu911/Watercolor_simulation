@@ -41,6 +41,7 @@ Central orchestrator managing canvas GPU textures and the simulation loop. Key r
 - Runs GPU physics simulation each frame via `physics_simulator.run_simulation_step()`
 - Handles gravity tilt controls (WASD keys or physics settings window)
 - Provides `add_paint_at()` interface for brushes to add water and pigment via GPU
+- Provides `remove_paint_at()` interface for removing brush to lift pigment via GPU
 - Displays computed textures directly (no CPU readback for rendering)
 - Layer visibility controls (Tab key to toggle water layer, Q key for quick evaporation)
 
@@ -69,6 +70,7 @@ GPU-accelerated physics engine using compute shaders. All physics runs on GPU vi
 - `deposition.glsl` - Pigment settling
 - `diffusion.glsl` - Pigment spreading
 - `add_paint.glsl` - Brush stroke application
+- `remove_paint.glsl` - Pigment removal (mobile layer first, then static layer)
 
 **Key Parameters (adjustable via physics settings window):**
 - `S`: Surface tension coefficient
@@ -91,18 +93,20 @@ GPU-accelerated physics engine using compute shaders. All physics runs on GPU vi
 #### 4. brush_manager.gd
 Handles input routing, brush switching, cursor rendering, and UI blocking. Responsibilities:
 - Routes mouse/tablet input to active brush with pressure support
-- Manages brush cursor sprites (dual-ring for watercolor showing pressure range)
+- Manages brush cursor sprites (dual-ring for watercolor/removing, single-ring for pencil/eraser)
 - Blocks input when mouse is over UI elements (`_is_mouse_over_ui()`)
 - Updates cursor position from both motion and button events (prevents ghost lines)
-- Switches between watercolor, pencil, and eraser brushes
+- Switches between watercolor, removing, pencil, and eraser brushes
 - Manages color picker and brush size controls
+- Dynamically updates cursor size based on active brush
 
 **Cursor System:**
-- `brush_cursor_outer`: Shows maximum brush size (full pressure)
-- `brush_cursor_inner`: Shows minimum brush size (light pressure)
+- `brush_cursor_outer`: Shows maximum brush size (full pressure) - shared by watercolor and removing brushes
+- `brush_cursor_inner`: Shows minimum brush size (light pressure) - shared by watercolor and removing brushes
 - `pencil_cursor`: Single ring for pencil
 - `eraser_cursor`: Single ring for eraser
 - All cursors use procedurally generated circle textures
+- Cursors are anchored and responsive to window size changes
 
 #### 5. watercolor_brush.gd
 Applies paint with pressure sensitivity and stroke masking:
@@ -118,18 +122,32 @@ Applies paint with pressure sensitivity and stroke masking:
 - Pressure read from `InputEventMouseMotion.pressure` for tablets
 - Falls back to 1.0 for mouse input
 
-#### 6. Other Brushes
+#### 6. removing_brush.gd
+Removes/lifts pigment from canvas with pressure sensitivity:
+- Uses `coordinator.remove_paint_at()` to remove pigment via GPU shader
+- Supports tablet pressure for size and strength variation
+- Priority system: Removes from mobile layer first, then static layer
+- Stroke mask prevents removing same pixel twice in one stroke
+- Preserves hue (RGB), only reduces mass (alpha)
+- `removal_strength`: 0.02 (very gradual removal for fine control)
+
+**Pressure Mapping:**
+- Same pressure settings as watercolor brush (0.1 to 2.0 size multiplier)
+- Removal amount scaled by pressure: `effective_removal = removal_strength * pressure`
+- Uses same dual-ring cursor as watercolor brush
+
+#### 7. Other Brushes
 - `pencil_brush.gd`: Draws on separate pencil layer
 - `eraser_brush.gd`: Clears pencil layer
 
-#### 7. camera_2d.gd
+#### 8. camera_2d.gd
 Handles viewport navigation:
 - Middle mouse button for panning
 - Mouse wheel for zoom (in/out)
 - Polls `Input.is_mouse_button_pressed()` for persistent panning state
 - Adjusts pan speed based on zoom level
 
-#### 8. physics_settings_window.gd & physics_settings_window.tscn
+#### 9. physics_settings_window.gd & physics_settings_window.tscn
 Real-time physics parameter adjustment UI:
 - PopupPanel with organized parameter sections
 - Canvas Orientation (vertical/horizontal tilt)
@@ -138,12 +156,34 @@ Real-time physics parameter adjustment UI:
 - Close button (✕) in title bar
 - All parameters update live during simulation
 
-#### 9. file_manager.gd
+#### 10. file_manager.gd
 Handles file operations:
 - `new_canvas(width, height)`: Reinitializes canvas with custom dimensions
 - `export_png(filepath)`: Exports current painting as PNG (composites all visible layers)
 - Calls `painting_coordinator.get_composite_image()` for CPU-side layer compositing
 - **Note**: Save/load project functionality was removed; only PNG export is supported
+
+#### 11. UI Anchoring System (main4.tscn)
+The UI is designed to be responsive to window size changes using Godot's anchor system:
+
+**Top-Right Anchored Elements** (`anchors_preset = 1`):
+- Color picker: 315px from right edge
+- Alpha slider (pigment_control): 155px from right edge
+- Water slider (water_control): 94px from right edge
+- Color swatch: 270px from right edge
+
+**Bottom-Right Anchored Elements** (`anchors_preset = 3`):
+- Brush tool buttons (VBoxContainer): Fixed distance from bottom-right
+- Brush size popups: Stack vertically from bottom, 414px from right edge
+  - Watercolor: 231px from bottom
+  - Removing: 150px from bottom
+  - Pencil: 68px from bottom
+  - Eraser: Extends 13px below bottom
+
+**Window Size:**
+- Current default: 2024×1150 pixels (configurable in `project.godot`)
+- All UI elements maintain their relative positions when window size changes
+- Negative offsets ensure elements stay properly positioned from edges
 
 ### Data Flow
 
@@ -220,10 +260,17 @@ void main() {
 
 1. Create a new `.gd` script in `trial4/`
 2. Implement `activate(coordinator)`, `deactivate()`, `cancel_stroke()`, and `handle_input(event, mouse_pos_img_space)` methods
-3. Use `coordinator.add_paint_at()` for watercolor effects
+3. Use `coordinator.add_paint_at()` for watercolor effects or `coordinator.remove_paint_at()` for removal
 4. Add brush node to main4.tscn and reference in `brush_manager.gd` export paths
-5. Add button and press handler in `brush_manager.gd`
-6. Create custom cursor sprite if needed
+5. Add button, size popup, and press handler in `brush_manager.gd`
+6. Update cursor visibility logic in `_update_brush_cursor_visibility()` if using existing cursors
+7. Update cursor size logic in `_update_brush_cursor_size()` if using dual-ring cursor
+
+**Example: removing_brush.gd**
+- Calls `coordinator.remove_paint_at(position, radius, strength)`
+- Uses same dual-ring cursor as watercolor brush
+- Has its own size popup and slider
+- Implements pressure sensitivity for both size and removal strength
 
 ### Debugging GPU Shaders
 
@@ -238,11 +285,34 @@ void main() {
 All physics textures use read/write pairs. Compute shaders read from one texture and write to another, then textures are swapped. This prevents read/write conflicts.
 
 ### Pressure Sensitivity
-Watercolor brush reads tablet pressure from `InputEventMouseMotion.pressure`. The value ranges 0.0-1.0:
+Watercolor and removing brushes read tablet pressure from `InputEventMouseMotion.pressure`. The value ranges 0.0-1.0:
 - Checked with `"pressure" in event` for compatibility
 - Clamped to minimum 0.05 to prevent invisible strokes
 - Falls back to cached value for button events
 - Mouse input defaults to 1.0 (full pressure)
+- Watercolor: Affects size and wet-on-wet diffusion
+- Removing: Affects size and removal strength
+
+### Pigment Removal System
+The `remove_paint.glsl` shader implements gradual pigment lifting with priority system:
+
+**Priority-Based Removal:**
+1. **Mobile Layer First**: Removes wet pigment before dry pigment
+2. **Static Layer Second**: Only processes after mobile layer is exhausted
+3. **Hue Preservation**: Only reduces alpha (mass), keeps RGB intact
+
+**Mass-Based Calculation:**
+- Uses Beer-Lambert law: `mass = -log(1 - alpha) / K_ABSORPTION`
+- Converts back: `alpha = 1 - exp(-K_ABSORPTION * mass)`
+- Removal amount in mass units for consistent behavior across alpha values
+- `removal_strength = 0.02` for very gradual, controlled lifting
+
+**GPU Workflow:**
+1. CPU creates removal mask (radius-based circular dabs)
+2. GPU shader reads mask and current layer states
+3. Calculates mass to remove at each pixel
+4. Removes from mobile first, then static if needed
+5. Writes updated layers back to GPU textures
 
 ### UI Input Blocking
 `brush_manager._is_mouse_over_ui()` checks if mouse is over any UI element:
@@ -275,17 +345,24 @@ Active files only:
 ## Future Work
 
 **High Priority:**
-- Pigment lifting brush (digital advantage - remove/lighten pigment)
 - Fix preview layer white edges during batch uploads (occurs at CPU→GPU handoff during continuous strokes)
 - Fix save/load system (currently saves correctly but fails to load project data back)
+- Further optimize batch stroke upload for very fast strokes
 
 **Lower Priority:**
 - Support stroke speed variation
-- Implement velocity map to reduce water oscillation
+- Implement velocity map to reduce water oscillation (momentum map implemented, velocity pending)
 - Scale canvas size further (currently 256×256, can go larger with optimization)
 - Expand pencil input range
-- UI improvements (snapshot/history)
+- UI improvements (snapshot/history, layer toggle buttons)
 - Web performance optimization
+
+**Recently Completed:**
+- ✓ Pigment lifting brush (removing_brush.gd with GPU shader support)
+- ✓ UI responsive anchoring system
+- ✓ Pressure-sensitive brush system with dual-ring cursor
+- ✓ Momentum map for water simulation
+- ✓ Real-time physics parameter adjustment window
 
 **Known Issues:**
 - **White edge artifact during batch upload**: When CPU preview uploads batched pixels to GPU during continuous painting, a white outline briefly appears at the handoff boundary (last dab outline). This is a rendering/compositing timing issue between preview and GPU-processed layers.
