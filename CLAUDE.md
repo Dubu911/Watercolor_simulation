@@ -290,7 +290,186 @@ Active files only:
 **Known Issues:**
 - **White edge artifact during batch upload**: When CPU preview uploads batched pixels to GPU during continuous painting, a white outline briefly appears at the handoff boundary (last dab outline). This is a rendering/compositing timing issue between preview and GPU-processed layers.
 - **White outline during fast evaporation**: When holding Q key for maximum evaporation speed, white outlines appear at water boundaries as the wet area shrinks. Only occurs with fast evaporation, not natural drying. Likely related to deposition/evaporation rate mismatch at edges.
-- **Save/load broken**: Project can save state correctly but load functionality fails to reconstruct the canvas from saved data.
+- **Save/load broken - RenderingDevice texture update issue**: Project can save state correctly and data loads correctly on CPU, but GPU display shows black canvas after load. See "Save/Load Debugging Session" below for details.
+
+## Save/Load Debugging Session (4+ Hours)
+
+This section documents an extensive debugging session attempting to fix the save/load functionality. The session involved multiple developers (Claude Code + ChatGPT consultation) and spanned multiple approaches.
+
+### The Problem
+
+**Symptom:** After loading a saved `.wcproj` file, the canvas displays as completely black, even though:
+- ✅ PNG export works correctly (shows the painting)
+- ✅ New canvas + painting works fine
+- ✅ File saves correctly
+- ✅ File loads correctly into CPU (verified 994 pixels with correct data like `(0.9961, 0.0, 0.0, 0.498)`)
+- ✅ CPU compositing (`get_composite_image()`) works correctly
+- ✅ GPU upload reports success
+- ❌ GPU display shows black canvas
+
+### What We Confirmed
+
+1. **Save path works**: `get_layer_images_for_save_flat()` correctly downloads GPU layers and bakes them into a single static layer
+2. **File format is valid**: JSON decodes successfully with correct pixel data
+3. **Load/decode works**: `_rgba8_to_rgbaf()` converts PNG data to RGBAF format correctly
+4. **Data reaches GPU**: Added extensive debug logging showing:
+   - Correct pixel data in CPU buffers (e.g., 994 non-empty pixels)
+   - Successful byte conversion via `_image_to_rgba32f_bytes()`
+   - `rd.texture_update()` completes without errors
+   - Data uploaded to BOTH read and write texture buffers (to survive buffer swaps)
+5. **Display binding works**: `Texture2DRD` objects created and bound to sprites
+6. **Simulation paused during load**: `_loading_in_progress` flag prevents physics from running during upload
+
+### Debugging Attempts (All Failed to Fix Issue)
+
+#### Phase 1: Alpha Format Investigations
+Suspected premultiplied vs. straight alpha mismatch:
+
+**Tried:**
+- Converting to premultiplied alpha on save, unpremultiplying on load
+- Keeping straight alpha throughout
+- Forcing empty pixels to white `(1,1,1,0)` instead of black `(0,0,0,0)`
+- Forcing empty pixels to `(0,0,0,0)` everywhere
+- Using `CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA` on sprites
+- Removing all custom shaders (set `material = null`)
+
+**Result:** No change - still black canvas
+
+#### Phase 2: Display Path Debugging
+Suspected sprite rendering or layer ordering issues:
+
+**Tried:**
+- Removing `pigment_display_shader` (set `material = null` on mobile/static sprites)
+- Forcing z-index ordering (background=0, static=1, mobile=2, pencil=3)
+- Resetting `self_modulate = Color(1,1,1,1)` on all sprites
+- Ensuring correct visibility flags after load
+- Rebinding `Texture2DRD` objects after upload
+- Waiting one frame after upload: `await get_tree().process_frame`
+- CPU preview fallback test (works - proves data is correct)
+
+**Result:** CPU preview showed painting correctly, but RenderingDevice path still showed black
+
+#### Phase 3: RenderingDevice State Management
+Suspected GPU texture update timing or state issues:
+
+**Tried:**
+- Adding `rd.barrier(RenderingDevice.BARRIER_MASK_TRANSFER)` after upload
+- Uploading to BOTH read and write textures (to survive first buffer swap)
+- Pausing simulation for multiple frames during load
+- Creating fresh `Texture2DRD` objects after upload
+- Downloading texture back from GPU after upload (confirmed data was there)
+- Changing texture upload format from RGBA8 to RGBAF
+- Verifying GPU texture format matches (R32G32B32A32_SFLOAT)
+
+**Result:** Data confirmed present on GPU (readback worked), but display still black
+
+#### Phase 4: Byte Conversion Verification
+Suspected data conversion issues:
+
+**Tried:**
+- Logging byte array contents before upload
+- Verifying float packing/unpacking in `_image_to_rgba32f_bytes()`
+- Testing with simplified single-color test images
+- Comparing byte arrays from live painting vs. loaded data
+- Saving debug PNGs at each conversion step
+
+**Result:** All byte conversions verified correct - identical to live painting path
+
+### The Conclusion: RenderingDevice Texture Update Bug
+
+After exhausting all reasonable approaches, we concluded this is likely a **Godot RenderingDevice limitation or bug**:
+
+**Key Observation:**
+- **Live painting path** (new canvas → paint → display): Works perfectly
+  - `init_gpu()` creates fresh textures
+  - `upload_paint_region()` updates textures during painting
+  - Display shows correctly
+
+- **Load path** (init → later update via load): Fails
+  - `init_gpu()` creates textures with empty data
+  - `upload_full_layers()` calls `rd.texture_update()` with new data
+  - Upload reports success, data confirmed present via readback
+  - Display shows black
+
+**Root Cause Theory:**
+
+The `RenderingDevice.texture_update()` method may not properly commit texture data updates in all cases, OR the texture RID becomes "stale" for rendering purposes even though the data is updated in GPU memory. The RenderingDevice is a **singleton global object** in Godot, and there may be undocumented state management requirements when updating existing textures vs. creating new ones.
+
+**Evidence:**
+1. CPU readback after `texture_update()` shows correct data (GPU memory updated)
+2. Same texture RID used for live painting works fine
+3. Creating new `Texture2DRD` objects doesn't help (same RID referenced)
+4. All alpha/format/timing approaches failed
+5. CPU composite path works (proves data is correct)
+
+### Attempted Solutions
+
+#### Solution A: Recreate Textures (Not Implemented)
+```gdscript
+func upload_full_layers(water_img: Image, mobile_img: Image, static_img: Image):
+    # Free old textures
+    if static_read_tex.is_valid():
+        rd.free_rid(static_read_tex)
+    if static_write_tex.is_valid():
+        rd.free_rid(static_write_tex)
+
+    # Recreate textures from scratch with new data
+    static_read_tex = _create_texture_from_image(static_img)
+    static_write_tex = _create_texture_from_image(static_img)
+
+    # Rebind to sprites
+    _setup_gpu_texture_display()
+```
+
+This would bypass `texture_update()` entirely by destroying and recreating textures.
+
+**Not implemented because:** Uncertain if it would work, and might cause other issues with shader bindings.
+
+#### Solution B: Compute Shader Copy (Not Implemented)
+Use a compute shader to copy from a staging texture instead of using `texture_update()`:
+
+```glsl
+// copy_texture.glsl
+layout(set = 0, binding = 0) uniform readonly image2D src;
+layout(set = 0, binding = 1) uniform writeonly image2D dst;
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    vec4 data = imageLoad(src, pos);
+    imageStore(dst, pos, data);
+}
+```
+
+**Not implemented because:** Would require significant refactoring and might hit the same issue.
+
+### Current Workaround
+
+**Save/load functionality has been disabled.** Only PNG export is available:
+
+- **File → Save Project**: Disabled/removed
+- **File → Load Project**: Disabled/removed
+- **File → Export PNG**: ✅ Works correctly (uses CPU compositing)
+
+Users can export their work as PNG files, but cannot save/load the editable project state with physics layers intact.
+
+### Lessons Learned
+
+1. **RenderingDevice is complex**: Godot's low-level GPU API has subtle state management requirements
+2. **Texture RIDs may have lifecycle constraints**: Creating textures vs. updating them may behave differently
+3. **Alpha handling is error-prone**: Even though we ruled it out, it consumed significant debugging time
+4. **CPU/GPU path divergence**: The fact that CPU composite works but GPU display doesn't is highly unusual
+5. **Documentation gaps**: Godot's RenderingDevice docs don't clearly explain texture update semantics
+
+### Future Investigation Ideas
+
+If someone wants to tackle this again:
+
+1. **Test on different GPU/drivers**: Might be driver-specific bug
+2. **Try Vulkan vs. OpenGL backend**: Compare behavior across rendering backends
+3. **Inspect RenderingDevice source code**: Look at `texture_update()` implementation in Godot engine
+4. **File Godot bug report**: With minimal reproduction case
+5. **Use RenderingServer instead**: Higher-level API might handle state management better
+6. **Alternative: CPU-only simulation during load**: Run one physics frame on CPU to "warm up" GPU state
 
 **Recently Completed:**
 - ✓ GPU compute shader implementation
