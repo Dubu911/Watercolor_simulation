@@ -17,6 +17,7 @@ const MAX_WATER_AMOUNT := 1.0
 @export var mobile_layer_sprite_path: NodePath
 @export var static_layer_sprite_path: NodePath
 @export var pencil_layer_sprite_path: NodePath
+@export var preview_layer_sprite_path: NodePath
 @export var brush_manager_path: NodePath
 
 # --- Internal Layer Sprite References ---
@@ -25,18 +26,22 @@ var water_layer_sprite: Sprite2D
 var mobile_layer_sprite: Sprite2D
 var static_layer_sprite: Sprite2D
 var pencil_layer_sprite: Sprite2D
+var preview_layer_sprite: Sprite2D
 
 # --- Image Data (CPU-based layers only) ---
 var background_image: Image
 var pencil_image: Image
+var preview_image: Image
 var absorbency_map: Image
 
 # --- Textures (CPU-based layers only) ---
 var background_texture: ImageTexture
 var pencil_texture: ImageTexture
+var preview_texture: ImageTexture
 
 # --- Status Flags ---
 var _dirty_pencil: bool = false
+var _dirty_preview: bool = false
 var active_brush_node: Node = null
 var _water_layer_visible: bool = false
 
@@ -76,6 +81,11 @@ func _ready():
 		printerr("PaintingCoordinator ERROR: PencilLayerSprite not found! Check the NodePath in the Inspector.")
 		return
 
+	preview_layer_sprite = get_node_or_null(preview_layer_sprite_path) as Sprite2D
+	if not preview_layer_sprite:
+		printerr("painting_coordinator ERROR: preview_layer_sprite not found! Check the NodePath in the Inspector.")
+		return
+
 	# 2. Initialize Images & Textures
 	# Background the "paper", starts white
 	background_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBA8)
@@ -89,6 +99,12 @@ func _ready():
 	pencil_texture = ImageTexture.create_from_image(pencil_image)
 	pencil_layer_sprite.texture = pencil_texture
 
+	# Preview layer (CPU-based, for instant visual feedback before GPU batch upload)
+	preview_image = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
+	preview_image.fill(Color(1, 1, 1, 0))  # Transparent white
+	preview_texture = ImageTexture.create_from_image(preview_image)
+	preview_layer_sprite.texture = preview_texture
+
 	# Initialize absorbency map (will be uploaded to GPU)
 	absorbency_map = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
 	_initialize_paper_properties()
@@ -98,6 +114,7 @@ func _ready():
 	mobile_layer_sprite.centered = false
 	static_layer_sprite.centered = false
 	pencil_layer_sprite.centered = false
+	preview_layer_sprite.centered = false
 
 	# Initialize GPU physics simulator
 	if physics_simulator:
@@ -122,6 +139,7 @@ func _ready():
 	static_layer_sprite.visible = true
 	mobile_layer_sprite.visible = true
 	pencil_layer_sprite.visible = true
+	preview_layer_sprite.visible = true
 	water_layer_sprite.visible = false
 
 	# Start dirty for initial update
@@ -136,14 +154,59 @@ func _process(_delta: float):
 	# GPU textures are automatically displayed via Texture2DRD
 	# No CPU readback needed!
 
-	# Only update pencil layer (CPU-based)
+	# Only update pencil and preview layers (CPU-based)
 	if _dirty_pencil:
 		if pencil_texture and pencil_image: pencil_texture.update(pencil_image)
 		_dirty_pencil = false
 
+	if _dirty_preview:
+		if preview_texture and preview_image: preview_texture.update(preview_image)
+		_dirty_preview = false
+
 	# Q key: Show only water layer (debug/preview feature)
 	_handle_layer_visibility_controls()
 
+
+# Batch upload multiple pixels at once (trial3 approach: pixel-by-pixel batching)
+func add_paint_batch(pixels: Array):
+	"""Upload multiple pixels in a single GPU operation - merges all pixels into one buffer"""
+	if pixels.size() == 0:
+		return
+
+	if not is_instance_valid(physics_simulator):
+		return
+
+	# Create full-canvas buffers to accumulate ALL pixels
+	var water_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RF)
+	var pigment_buffer = Image.create(CANVAS_WIDTH, CANVAS_HEIGHT, false, Image.FORMAT_RGBAF)
+
+	# Fill with zeros (no change)
+	water_buffer.fill(Color(0, 0, 0))
+	pigment_buffer.fill(Color(1, 1, 1, 0))  # Transparent white
+
+	# Paint all pixels into the buffers (trial3 approach: monotonic values per pixel)
+	var avg_pressure = 0.0
+	for pixel in pixels:
+		var x = pixel["x"]
+		var y = pixel["y"]
+		var color = pixel["color"]
+		var water = pixel["water"]
+		var pressure = pixel["pressure"]
+
+		avg_pressure += pressure
+
+		# Check if within canvas bounds
+		if x >= 0 and x < CANVAS_WIDTH and y >= 0 and y < CANVAS_HEIGHT:
+			# Set water for this pixel (trial3: each pixel painted once with monotonic value)
+			water_buffer.set_pixel(x, y, Color(water, 0, 0))
+
+			# Set pigment for this pixel (GPU shader will do Beer-Lambert mixing with canvas)
+			pigment_buffer.set_pixel(x, y, color)
+
+	# Upload the merged buffers ONCE (instead of once per pixel!)
+	avg_pressure /= pixels.size()
+
+	physics_simulator.upload_paint_region(0, 0, water_buffer, pigment_buffer, avg_pressure)
 
 # GPU-compatible paint upload (optimized - only upload affected region)
 func add_paint_at(pos: Vector2, color: Color, water: float, size: float, pressure: float = 1.0):
@@ -334,6 +397,126 @@ func set_horizontal_tilt(degrees: float):
 
 func mark_pencil_dirty():
 	_dirty_pencil = true
+
+func mark_preview_dirty():
+	_dirty_preview = true
+
+func clear_preview_layer():
+	if preview_image:
+		preview_image.fill(Color(1, 1, 1, 0))  # Transparent white
+		mark_preview_dirty()
+
+func draw_preview_pixel(x: int, y: int, color: Color):
+	"""Draw a single pixel to preview layer (trial3 approach for smooth strokes)"""
+	if not is_instance_valid(preview_image):
+		return
+
+	if x < 0 or x >= CANVAS_WIDTH or y < 0 or y >= CANVAS_HEIGHT:
+		return
+
+	# Use the actual color alpha (no artificial reduction)
+	var preview_color = color
+
+	const K_ABSORPTION = 0.5
+	const EPS_A = 0.000001
+
+	var existing = preview_image.get_pixel(x, y)
+
+	# Beer-Lambert optical mixing (same as add_paint.glsl)
+	var new_pigment: Color
+
+	if preview_color.a > EPS_A and existing.a > EPS_A:
+		# Both have pigment - optical mix
+		var new_mass = -log(max(EPS_A, 1.0 - preview_color.a)) / K_ABSORPTION
+		var existing_mass = -log(max(EPS_A, 1.0 - existing.a)) / K_ABSORPTION
+
+		var total_mass = new_mass + existing_mass
+
+		# Weight by mass for color mixing
+		var new_weight = new_mass / total_mass
+		var existing_weight = existing_mass / total_mass
+
+		var mixed_rgb = Color(
+			preview_color.r * new_weight + existing.r * existing_weight,
+			preview_color.g * new_weight + existing.g * existing_weight,
+			preview_color.b * new_weight + existing.b * existing_weight
+		)
+
+		# Convert total mass back to alpha
+		var total_optical_density = total_mass * K_ABSORPTION
+		var new_alpha = 1.0 - exp(-total_optical_density)
+		new_alpha = clamp(new_alpha, 0.0, 1.0)
+
+		new_pigment = Color(mixed_rgb.r, mixed_rgb.g, mixed_rgb.b, new_alpha)
+	elif preview_color.a > EPS_A:
+		# Only new pigment
+		new_pigment = preview_color
+	else:
+		# Only existing pigment (or none)
+		new_pigment = existing
+
+	preview_image.set_pixel(x, y, new_pigment)
+	mark_preview_dirty()
+
+func draw_preview_dab(center: Vector2, color: Color, radius: float):
+	"""Draw a simple circular dab to preview layer using Beer-Lambert optical mixing"""
+	if not is_instance_valid(preview_image):
+		return
+
+	var i_radius = int(ceil(radius))
+	var center_x = int(center.x)
+	var center_y = int(center.y)
+
+	# Reduce preview opacity to 30% of original to match lighter watercolor appearance
+	var preview_color = Color(color.r, color.g, color.b, color.a * 0.3)
+
+	const K_ABSORPTION = 0.5
+	const EPS_A = 0.000001
+
+	for y_offset in range(-i_radius, i_radius + 1):
+		for x_offset in range(-i_radius, i_radius + 1):
+			if Vector2(x_offset, y_offset).length_squared() <= radius * radius:
+				var draw_x = center_x + x_offset
+				var draw_y = center_y + y_offset
+				if draw_x >= 0 and draw_x < CANVAS_WIDTH and draw_y >= 0 and draw_y < CANVAS_HEIGHT:
+					var existing = preview_image.get_pixel(draw_x, draw_y)
+
+					# Beer-Lambert optical mixing (same as add_paint.glsl)
+					var new_pigment: Color
+
+					if preview_color.a > EPS_A and existing.a > EPS_A:
+						# Both have pigment - optical mix
+						var new_mass = -log(max(EPS_A, 1.0 - preview_color.a)) / K_ABSORPTION
+						var existing_mass = -log(max(EPS_A, 1.0 - existing.a)) / K_ABSORPTION
+
+						var total_mass = new_mass + existing_mass
+
+						# Weight by mass for color mixing
+						var new_weight = new_mass / total_mass
+						var existing_weight = existing_mass / total_mass
+
+						var mixed_rgb = Color(
+							preview_color.r * new_weight + existing.r * existing_weight,
+							preview_color.g * new_weight + existing.g * existing_weight,
+							preview_color.b * new_weight + existing.b * existing_weight
+						)
+
+						# Convert total mass back to alpha
+						var total_optical_density = total_mass * K_ABSORPTION
+						var new_alpha = 1.0 - exp(-total_optical_density)
+						new_alpha = clamp(new_alpha, 0.0, 1.0)
+
+						new_pigment = Color(mixed_rgb.r, mixed_rgb.g, mixed_rgb.b, new_alpha)
+					elif preview_color.a > EPS_A:
+						# Only new pigment
+						new_pigment = preview_color
+					else:
+						# Only existing pigment (or none)
+						new_pigment = existing
+
+					preview_image.set_pixel(draw_x, draw_y, new_pigment)
+
+	mark_preview_dirty()
 
 func set_active_brush(brush_node: Node):
 	self.active_brush_node = brush_node

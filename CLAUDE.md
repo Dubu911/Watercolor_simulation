@@ -275,9 +275,9 @@ Active files only:
 ## Future Work
 
 **High Priority:**
-- Layer toggle buttons (manual UI controls for layer visibility - Tab key toggle implemented)
-- Faster brush input (batch stroke upload for better performance with fast strokes)
 - Pigment lifting brush (digital advantage - remove/lighten pigment)
+- Fix preview layer white edges during batch uploads (occurs at CPU→GPU handoff during continuous strokes)
+- Fix save/load system (currently saves correctly but fails to load project data back)
 
 **Lower Priority:**
 - Support stroke speed variation
@@ -287,6 +287,11 @@ Active files only:
 - UI improvements (snapshot/history)
 - Web performance optimization
 
+**Known Issues:**
+- **White edge artifact during batch upload**: When CPU preview uploads batched pixels to GPU during continuous painting, a white outline briefly appears at the handoff boundary (last dab outline). This is a rendering/compositing timing issue between preview and GPU-processed layers.
+- **White outline during fast evaporation**: When holding Q key for maximum evaporation speed, white outlines appear at water boundaries as the wet area shrinks. Only occurs with fast evaporation, not natural drying. Likely related to deposition/evaporation rate mismatch at edges.
+- **Save/load broken**: Project can save state correctly but load functionality fails to reconstruct the canvas from saved data.
+
 **Recently Completed:**
 - ✓ GPU compute shader implementation
 - ✓ Physics settings window with real-time parameter adjustment
@@ -295,3 +300,6 @@ Active files only:
 - ✓ Q key quick evaporation boost
 - ✓ PNG export functionality
 - ✓ UI input blocking (prevents painting when clicking UI elements)
+- ✓ Batched pixel upload system (time-based GPU uploads for performance)
+- ✓ CPU preview layer with Beer-Lambert optical mixing
+- ✓ Pixel-by-pixel stroke masking (trial3 approach for smooth continuous strokes)

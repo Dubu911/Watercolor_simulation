@@ -29,9 +29,11 @@ centered = false
 
 [node name="water_layer" type="Sprite2D" parent="layers_container"]
 visible = false
-texture_filter = 1
 
 [node name="pencil_layer" type="Sprite2D" parent="layers_container"]
+
+[node name="preview_layer" type="Sprite2D" parent="layers_container"]
+z_index = 4
 
 [node name="brush_cursor_outer" type="Sprite2D" parent="layers_container"]
 visible = false
@@ -86,6 +88,7 @@ water_layer_sprite_path = NodePath("../layers_container/water_layer")
 mobile_layer_sprite_path = NodePath("../layers_container/mobile_layer")
 static_layer_sprite_path = NodePath("../layers_container/static_layer")
 pencil_layer_sprite_path = NodePath("../layers_container/pencil_layer")
+preview_layer_sprite_path = NodePath("../layers_container/preview_layer")
 brush_manager_path = NodePath("../brush_manager")
 
 [node name="physics_simulator" type="Node" parent="painting_coordinator"]

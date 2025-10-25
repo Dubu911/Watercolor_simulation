@@ -11,6 +11,9 @@ extends Node
 @export var min_pressure_size_mult: float = 0.1 # Minimum size multiplier at light pressure
 @export var max_pressure_size_mult: float = 2.0 # Maximum size multiplier at full pressure
 
+# --- Batching Settings ---
+@export var batch_upload_interval: float = 0.25 # Seconds between GPU uploads (0.25 = 250ms)
+
 # --- Internal State ---
 var coordinator_ref # Reference to the painting_coordinator
 var is_painting: bool = false # Tracks if the pen/mouse button is held
@@ -23,6 +26,10 @@ var stroke_mask: Array  # 2D array [y][x] of booleans
 var canvas_width: int = 0
 var canvas_height: int = 0
 
+# --- Batching State ---
+var pending_pixels: Array = []  # Array of {x, y, color, water, pressure} - uploaded periodically
+var batch_timer: Timer = null
+
 func activate(coordinator):
 	coordinator_ref = coordinator
 	is_painting = false
@@ -33,6 +40,9 @@ func activate(coordinator):
 
 	# Initialize stroke mask with canvas dimensions
 	_initialize_stroke_mask()
+
+	# Setup batch timer for periodic GPU uploads
+	_setup_batch_timer()
 
 # Helper to safely read pressure from input events
 func _event_pressure(event: InputEvent) -> float:
@@ -51,6 +61,13 @@ func _event_pressure(event: InputEvent) -> float:
 
 func deactivate():
 	is_painting = false
+	# Upload any pending pixels before deactivating
+	_flush_pending_pixels()
+	# Stop and clean up timer
+	if batch_timer:
+		batch_timer.stop()
+		batch_timer.queue_free()
+		batch_timer = null
 
 # Cancel current stroke (called when UI is clicked to prevent ghost lines)
 func cancel_stroke():
@@ -125,6 +142,8 @@ func _continue_stroke(pos: Vector2, pressure: float):
 # End the current stroke
 func _end_stroke():
 	is_painting = false
+	# Upload any remaining pixels immediately when stroke ends
+	_flush_pending_pixels()
 	# Stroke mask will be cleared on next stroke start
 
 # Paint a segment of the stroke (interpolated line)
@@ -138,8 +157,8 @@ func _paint_stroke_segment(from_pos: Vector2, to_pos: Vector2, pressure: float):
 	# Calculate distance and interpolation steps
 	var distance = from_pos.distance_to(to_pos)
 
-	# Step size - optimized for performance (50% of radius = 2x overlap, still smooth)
-	var step_size = max(0.5, brush_radius * 0.5)
+	# Step size - smaller for smoother strokes (25% of radius = 4x overlap)
+	var step_size = max(0.25, brush_radius * 0.25)
 	var steps = max(1, int(ceil(distance / step_size)))
 
 	# Paint at each interpolated point
@@ -148,11 +167,83 @@ func _paint_stroke_segment(from_pos: Vector2, to_pos: Vector2, pressure: float):
 		var paint_pos = from_pos.lerp(to_pos, t)
 		_paint_circular_dab(paint_pos, brush_radius)
 
-# Paint a circular dab at the given position (GPU version)
+# Paint a circular dab at the given position (Trial3 approach: pixel-by-pixel with stroke masking)
 func _paint_circular_dab(center: Vector2, radius: float):
-	# For GPU mode, we use add_paint_at which uploads a full circular dab at once
-	# This is more efficient than pixel-by-pixel updates
-	if coordinator_ref.has_method("add_paint_at"):
-		coordinator_ref.add_paint_at(center, brush_color, water_amount, radius, current_pressure)
+	if not is_instance_valid(coordinator_ref):
+		return
+
+	var i_radius = int(ceil(radius))
+	var center_x = int(center.x)
+	var center_y = int(center.y)
+
+	# Paint pixel-by-pixel like trial3 for smooth, continuous stroke
+	for y_offset in range(-i_radius, i_radius + 1):
+		for x_offset in range(-i_radius, i_radius + 1):
+			var distance = Vector2(x_offset, y_offset).length()
+			if distance <= radius:
+				var pixel_x = center_x + x_offset
+				var pixel_y = center_y + y_offset
+
+				# Check bounds
+				if pixel_x >= 0 and pixel_x < canvas_width and pixel_y >= 0 and pixel_y < canvas_height:
+					# Check stroke mask - only paint if not already painted (trial3 approach)
+					if not stroke_mask[pixel_y][pixel_x]:
+						# Mark pixel as painted
+						stroke_mask[pixel_y][pixel_x] = true
+
+						# Draw this pixel to preview layer immediately
+						if coordinator_ref.has_method("draw_preview_pixel"):
+							coordinator_ref.draw_preview_pixel(pixel_x, pixel_y, brush_color)
+
+						# Add this pixel to pending batch for GPU upload later
+						pending_pixels.append({
+							"x": pixel_x,
+							"y": pixel_y,
+							"color": brush_color,
+							"water": water_amount,
+							"pressure": current_pressure
+						})
+
+# --- Batching System ---
+
+func _setup_batch_timer():
+	"""Create and start the batch upload timer"""
+	if batch_timer:
+		batch_timer.queue_free()
+
+	batch_timer = Timer.new()
+	add_child(batch_timer)
+	batch_timer.wait_time = batch_upload_interval
+	batch_timer.one_shot = false
+	batch_timer.timeout.connect(_on_batch_timer_timeout)
+	batch_timer.start()
+	print("Batch timer started with interval: ", batch_upload_interval, "s")
+
+func _on_batch_timer_timeout():
+	"""Called periodically by timer to upload batched pixels to GPU"""
+	if pending_pixels.size() > 0:
+		_flush_pending_pixels()
+
+func _flush_pending_pixels():
+	"""Upload all pending pixels to GPU in ONE batch and clear preview layer"""
+	if pending_pixels.size() == 0:
+		return
+
+	if not is_instance_valid(coordinator_ref):
+		pending_pixels.clear()
+		return
+
+	print("Uploading ", pending_pixels.size(), " pixels to GPU in single batch...")
+
+	# Upload ALL pixels in a SINGLE batch operation (MUCH faster!)
+	if coordinator_ref.has_method("add_paint_batch"):
+		coordinator_ref.add_paint_batch(pending_pixels)
 	else:
-		printerr("watercolor_brush ERROR: Coordinator missing 'add_paint_at' method!")
+		printerr("Coordinator missing add_paint_batch method!")
+
+	# Clear the pending pixels array
+	pending_pixels.clear()
+
+	# Clear the preview layer since GPU has taken over
+	if coordinator_ref.has_method("clear_preview_layer"):
+		coordinator_ref.clear_preview_layer()
