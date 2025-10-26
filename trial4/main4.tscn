@@ -2,11 +2,11 @@
 
 [ext_resource type="Script" uid="uid://cdxlvkajpq3pc" path="res://trial4/main_4.gd" id="1_bp1uf"]
 [ext_resource type="Script" uid="uid://cvvq6glpl1bup" path="res://trial4/brush_manager.gd" id="2_2yaok"]
-[ext_resource type="Script" uid="uid://b8r4ttw2vfo28" path="res://trial4/pencil_brush.gd" id="2_h1ynh"]
+[ext_resource type="Script" uid="uid://b8r4ttw2vfo28" path="res://trial3/pencil_brush_v3.gd" id="2_h1ynh"]
 [ext_resource type="Script" uid="uid://bc5j1wi806pcg" path="res://trial4/removing_brush.gd" id="2_removing"]
 [ext_resource type="Script" uid="uid://bgucbqvniw8vi" path="res://trial4/watercolor_brush.gd" id="2_shnf3"]
 [ext_resource type="Script" uid="uid://cjhtgqoi6ouao" path="res://trial4/camera_2d.gd" id="2_sl8jp"]
-[ext_resource type="Script" uid="uid://cduo36t1smadi" path="res://trial4/eraser_brush.gd" id="3_1yvx1"]
+[ext_resource type="Script" uid="uid://cduo36t1smadi" path="res://trial3/eraser_brush_v3.gd" id="3_1yvx1"]
 [ext_resource type="Texture2D" uid="uid://b37d655y1kk84" path="res://icons/pallet.png" id="3_h1ynh"]
 [ext_resource type="Texture2D" uid="uid://d235qto2wf1ks" path="res://icons/removing_brush1.png" id="3_removing"]
 [ext_resource type="Texture2D" uid="uid://dtir1mkd8gl80" path="res://icons/pencil.png" id="4_1yvx1"]
@@ -246,10 +246,10 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -414.0
-offset_top = -231.0
-offset_right = -121.0
-offset_bottom = -152.0
+offset_left = -406.0
+offset_top = -341.0
+offset_right = -113.0
+offset_bottom = -262.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
@@ -282,10 +282,10 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -414.0
-offset_top = -150.0
-offset_right = -121.0
-offset_bottom = -71.0
+offset_left = -406.0
+offset_top = -260.0
+offset_right = -113.0
+offset_bottom = -181.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
@@ -318,10 +318,10 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -414.0
-offset_top = -68.0
-offset_right = -121.0
-offset_bottom = 11.0
+offset_left = -406.0
+offset_top = -178.0
+offset_right = -113.0
+offset_bottom = -99.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
@@ -352,10 +352,10 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -414.0
-offset_top = 13.0
-offset_right = -121.0
-offset_bottom = 92.0
+offset_left = -406.0
+offset_top = -97.0
+offset_right = -113.0
+offset_bottom = -18.0
 grow_horizontal = 0
 grow_vertical = 0
 mouse_filter = 2
