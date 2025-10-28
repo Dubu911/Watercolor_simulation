@@ -2,11 +2,11 @@
 
 [ext_resource type="Script" uid="uid://cdxlvkajpq3pc" path="res://trial4/main_4.gd" id="1_bp1uf"]
 [ext_resource type="Script" uid="uid://cvvq6glpl1bup" path="res://trial4/brush_manager.gd" id="2_2yaok"]
-[ext_resource type="Script" uid="uid://b8r4ttw2vfo28" path="res://trial3/pencil_brush_v3.gd" id="2_h1ynh"]
+[ext_resource type="Script" uid="uid://b8r4ttw2vfo28" path="res://trial4/pencil_brush.gd" id="2_h1ynh"]
 [ext_resource type="Script" uid="uid://bc5j1wi806pcg" path="res://trial4/removing_brush.gd" id="2_removing"]
 [ext_resource type="Script" uid="uid://bgucbqvniw8vi" path="res://trial4/watercolor_brush.gd" id="2_shnf3"]
 [ext_resource type="Script" uid="uid://cjhtgqoi6ouao" path="res://trial4/camera_2d.gd" id="2_sl8jp"]
-[ext_resource type="Script" uid="uid://cduo36t1smadi" path="res://trial3/eraser_brush_v3.gd" id="3_1yvx1"]
+[ext_resource type="Script" uid="uid://cduo36t1smadi" path="res://trial4/eraser_brush.gd" id="3_1yvx1"]
 [ext_resource type="Texture2D" uid="uid://b37d655y1kk84" path="res://icons/pallet.png" id="3_h1ynh"]
 [ext_resource type="Texture2D" uid="uid://d235qto2wf1ks" path="res://icons/removing_brush1.png" id="3_removing"]
 [ext_resource type="Texture2D" uid="uid://dtir1mkd8gl80" path="res://icons/pencil.png" id="4_1yvx1"]

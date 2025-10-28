@@ -1,5 +1,7 @@
 # Watercolor Simulation Painting Tool
 
+I created these paintings with this simulation. A YouTube demo is available! Feel free to check it out:
+https://youtu.be/lMHWSwNUGhI
 This project is a digital painting tool focused on simulating the unique behavior of watercolor.  
 It is being developed using the [Godot Game Engine](https://godotengine.org/).
 
